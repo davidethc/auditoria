@@ -1,0 +1,293 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/utils/supabase';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Loader } from '@/components/ui/loader';
+import { 
+  ArrowLeft,
+  Calendar,
+  FileText,
+  Users,
+  Send,
+  Play,
+  FileCheck,
+  CheckCircle2,
+  AlertCircle
+} from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import type { AuditoriaCompleta } from '@/types/auditorias';
+import { PreparacionForm } from '@/components/PreparacionForm';
+import { ParticipantesForm } from '@/components/ParticipantesForm';
+import { GestorEstados } from '@/components/GestorEstados';
+
+type UserRole = 'auditado' | 'auditor' | 'auditor_interno';
+
+const estadoConfig: Record<string, { label: string; variant: 'default' | 'destructive' | 'secondary' | 'outline' }> = {
+  PLANIFICADA: { label: 'Planificada', variant: 'outline' },
+  EN_PREPARACION: { label: 'En Preparación', variant: 'secondary' },
+  EN_EJECUCION: { label: 'En Ejecución', variant: 'default' },
+  EN_REPORTE: { label: 'En Reporte', variant: 'default' },
+  CERRADA: { label: 'Cerrada', variant: 'secondary' },
+};
+
+export default function AuditoriaDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [auditoria, setAuditoria] = useState<AuditoriaCompleta | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'preparacion' | 'participantes' | 'comunicaciones'>('preparacion');
+
+  useEffect(() => {
+    const checkUserRole = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (data) {
+        setUserRole(data.role as UserRole);
+      }
+    };
+
+    if (!authLoading) {
+      checkUserRole();
+    }
+  }, [authLoading]);
+
+  useEffect(() => {
+    if (params.id && userRole) {
+      loadAuditoria();
+    }
+  }, [params.id, userRole]);
+
+  const loadAuditoria = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const { data, error: auditoriaError } = await supabase
+        .from('auditorias')
+        .select(`
+          *,
+          activity:audit_activities!inner(
+            id,
+            activity_number,
+            activity_description,
+            start_date,
+            end_date,
+            priority,
+            component,
+            subcomponent
+          ),
+          preparacion:auditoria_preparacion(*)
+        `)
+        .eq('id', params.id)
+        .single();
+
+      if (auditoriaError) throw auditoriaError;
+
+      // Cargar participantes
+      const { data: participantes } = await supabase
+        .from('auditoria_participantes')
+        .select(`
+          *,
+          user:users!user_id(
+            id,
+            full_name,
+            email,
+            role
+          )
+        `)
+        .eq('auditoria_id', params.id);
+
+      setAuditoria({
+        ...data,
+        participantes: participantes || []
+      });
+    } catch (err) {
+      console.error('Error cargando auditoría:', err);
+      setError('Error al cargar la auditoría');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return '-';
+    try {
+      return format(new Date(dateString), 'dd/MM/yyyy', { locale: es });
+    } catch {
+      return '-';
+    }
+  };
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader variant="cube" size={48}>
+          <span className="text-sm text-muted-foreground mt-4">Cargando auditoría...</span>
+        </Loader>
+      </div>
+    );
+  }
+
+  if (error || !auditoria) {
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" onClick={() => router.back()} className="gap-2">
+          <ArrowLeft className="h-4 w-4" />
+          Volver
+        </Button>
+        <div className="rounded-lg border border-destructive bg-destructive/10 p-4">
+          <div className="flex items-center gap-2 text-destructive">
+            <AlertCircle className="h-5 w-5" />
+            <p className="font-medium">{error || 'Auditoría no encontrada'}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const activity = auditoria.activity as any;
+  const config = estadoConfig[auditoria.estado] || estadoConfig.PLANIFICADA;
+  const preparacion = Array.isArray(auditoria.preparacion) ? auditoria.preparacion[0] : auditoria.preparacion;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={() => router.back()} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Volver
+          </Button>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold">Auditoría - Actividad #{activity?.activity_number}</h1>
+              <Badge variant={config.variant}>{config.label}</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              {activity?.activity_description}
+            </p>
+          </div>
+        </div>
+
+        <GestorEstados
+          auditoria={auditoria}
+          onEstadoChange={loadAuditoria}
+        />
+      </div>
+
+      {/* Información general */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2 text-muted-foreground mb-2">
+            <Calendar className="h-4 w-4" />
+            <span className="text-sm font-medium">Fecha de Inicio</span>
+          </div>
+          <p className="text-lg font-semibold">{formatDate(auditoria.fecha_inicio)}</p>
+        </div>
+
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2 text-muted-foreground mb-2">
+            <Calendar className="h-4 w-4" />
+            <span className="text-sm font-medium">Fecha de Fin</span>
+          </div>
+          <p className="text-lg font-semibold">{formatDate(auditoria.fecha_fin)}</p>
+        </div>
+
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2 text-muted-foreground mb-2">
+            <Users className="h-4 w-4" />
+            <span className="text-sm font-medium">Participantes</span>
+          </div>
+          <p className="text-lg font-semibold">
+            {auditoria.participantes?.length || 0} persona{(auditoria.participantes?.length || 0) !== 1 ? 's' : ''}
+          </p>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b">
+        <div className="flex gap-4">
+          <button
+            onClick={() => setActiveTab('preparacion')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'preparacion'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <FileText className="h-4 w-4 inline mr-2" />
+            Preparación
+          </button>
+          <button
+            onClick={() => setActiveTab('participantes')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'participantes'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Users className="h-4 w-4 inline mr-2" />
+            Participantes
+          </button>
+          <button
+            onClick={() => setActiveTab('comunicaciones')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'comunicaciones'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Send className="h-4 w-4 inline mr-2" />
+            Comunicaciones
+          </button>
+        </div>
+      </div>
+
+      {/* Contenido de tabs */}
+      <div>
+        {activeTab === 'preparacion' && (
+          <PreparacionForm
+            auditoriaId={auditoria.id}
+            preparacion={preparacion}
+            onSuccess={loadAuditoria}
+            readOnly={auditoria.estado !== 'PLANIFICADA'}
+          />
+        )}
+
+        {activeTab === 'participantes' && (
+          <ParticipantesForm
+            auditoriaId={auditoria.id}
+            participantes={auditoria.participantes || []}
+            onSuccess={loadAuditoria}
+            readOnly={auditoria.estado === 'CERRADA'}
+          />
+        )}
+
+        {activeTab === 'comunicaciones' && (
+          <div className="rounded-lg border bg-card p-8 text-center">
+            <Send className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-sm text-muted-foreground">
+              Sección de comunicaciones en desarrollo
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+

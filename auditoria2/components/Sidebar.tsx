@@ -16,6 +16,7 @@ import {
   Shield,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useSidebar } from '@/contexts/SidebarContext';
@@ -36,6 +37,17 @@ const navItems: NavItem[] = [
     title: 'Dashboard',
     href: '/',
     icon: LayoutDashboard,
+  },
+  {
+    title: 'Plan de Trabajo',
+    href: '/plan-trabajo',
+    icon: ClipboardList,
+  },
+  {
+    title: 'Mis Auditorías',
+    href: '/auditorias',
+    icon: FileText,
+    // Permitir a auditores y auditores internos
   },
   {
     title: 'Documents',
