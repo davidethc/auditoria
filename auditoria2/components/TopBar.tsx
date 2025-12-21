@@ -1,44 +1,38 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { User, LogOut, Settings, CreditCard } from 'lucide-react';
 // import { useSubscription } from '@/hooks/useSubscription';
 
 // TopBar component handles user profile display and navigation
 export default function TopBar() {
   const { user, signOut } = useAuth();
   const router = useRouter();
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-//   const { subscription, isLoading: isLoadingSubscription } = useSubscription();
-
-  // Handle click outside dropdown to close it
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  // const { subscription, isLoading: isLoadingSubscription } = useSubscription();
 
   // Handle user logout
   const handleLogout = async () => {
     await signOut();
-    setIsDropdownOpen(false);
     router.replace('/login');
   };
 
   if (!user) return null;
 
   return (
-    <div className="w-full bg-gray-800 text-white p-4">
+    <div className="w-full bg-card border-b border-border p-4">
       <div className="max-w-7xl mx-auto flex justify-between items-center">
-        <Link href="/" className="text-xl font-bold hover:text-gray-300">
+        <Link href="/" className="text-xl font-bold text-foreground hover:text-primary transition-colors">
           Your App Name
         </Link>
 
@@ -49,44 +43,64 @@ export default function TopBar() {
             subscription.status === 'canceled' || 
             (subscription.cancel_at_period_end && new Date(subscription.current_period_end) > new Date())
           ) && (
-            <button
+            <Button
               onClick={() => router.push('/profile')}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
+              variant="outline"
+              size="sm"
             >
+              <CreditCard className="h-4 w-4 mr-2" />
               View Subscription
-            </button>
+            </Button>
           )} */}
           
           {/* User Profile Dropdown */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center gap-2 hover:bg-gray-700 px-3 py-2 rounded-lg"
-            >
-              <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
-                {user.email?.[0].toUpperCase()}
-              </div>
-              <span>{user.email}</span>
-            </button>
-
-            {isDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg py-1 z-50">
-                <Link
-                  href="/profile"
-                  className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  onClick={() => setIsDropdownOpen(false)}
-                >
-                  Profile & Subscription
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-primary/10 text-primary rounded-full flex items-center justify-center font-semibold">
+                  {user.email?.[0].toUpperCase()}
+                </div>
+                <span className="hidden sm:inline text-foreground">{user.email}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium leading-none">My Account</p>
+                  <p className="text-xs leading-none text-muted-foreground truncate">
+                    {user.email}
+                  </p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/profile" className="flex items-center cursor-pointer">
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
                 </Link>
-                <button
-                  onClick={handleLogout}
-                  className="block w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
-                >
-                  Sign Out
-                </button>
-              </div>
-            )}
-          </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/profile" className="flex items-center cursor-pointer">
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Subscription
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings" className="flex items-center cursor-pointer">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="text-destructive focus:text-destructive cursor-pointer"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </div>

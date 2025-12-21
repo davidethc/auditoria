@@ -2,6 +2,9 @@
 
 import { useState } from 'react';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
+import { Button } from '@/components/ui/button';
+import { Loader } from '@/components/ui/loader';
+import { Mail, Lock, KeyRound } from 'lucide-react';
 
 interface LoginFormProps {
   onSubmit: (email: string, password: string, isSignUp: boolean) => Promise<void>;
@@ -27,43 +30,72 @@ export function LoginForm({
   };
 
   return (
-    <div className="max-w-md w-full space-y-8 p-8 bg-white dark:bg-gray-800 rounded-lg shadow-md">
-      <div className="text-center">
-        <h2 className="text-3xl font-bold">{isSignUp ? 'Create an account' : 'Sign in'}</h2>
+    <div className="max-w-md w-full space-y-8 p-8 bg-card border border-border rounded-lg shadow-lg">
+      <div className="text-center space-y-2">
+        <h2 className="text-3xl font-bold text-foreground">
+          {isSignUp ? 'Create an account' : 'Sign in'}
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {isSignUp ? 'Get started with your account' : 'Welcome back! Please sign in to continue'}
+        </p>
       </div>
 
       {error && (
-        <div className="text-red-500 text-center">
-          {error}
+        <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-4">
+          <p className="text-sm text-destructive text-center">{error}</p>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-        <div className="rounded-md shadow-sm space-y-4">
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email address"
-            className="appearance-none rounded-lg relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 text-gray-900 dark:text-white dark:bg-gray-700 focus:outline-none focus:ring-purple focus:border-purple"
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            className="appearance-none rounded-lg relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 text-gray-900 dark:text-white dark:bg-gray-700 focus:outline-none focus:ring-purple focus:border-purple"
-          />
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="email" className="text-sm font-medium text-foreground">
+              Email address
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="flex h-10 w-full rounded-md border border-input bg-background pl-10 pr-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                required
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="password" className="text-sm font-medium text-foreground">
+              Password
+            </label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                type="password"
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                className="flex h-10 w-full rounded-md border border-input bg-background pl-10 pr-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                required
+                disabled={isLoading}
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <button
+        <div className="flex items-center justify-end">
+          <Button
             type="button"
+            variant="link"
+            size="sm"
             onClick={() => setIsForgotPasswordOpen(true)}
-            className="text-sm text-purple hover:text-purple-700"
+            className="text-sm px-0"
           >
             Forgot your password?
-          </button>
+          </Button>
         </div>
 
         <ForgotPasswordModal 
@@ -71,32 +103,57 @@ export function LoginForm({
           onClose={() => setIsForgotPasswordOpen(false)}
         />
 
-        <button 
+        <Button 
           type="submit" 
-          disabled={isLoading}
-          className="w-full py-2 px-4 border border-transparent rounded-lg shadow-sm text-white bg-purple hover:bg-purple-700 disabled:opacity-50"
+          disabled={isLoading || !email || !password}
+          className="w-full"
+          size="lg"
         >
-          {isSignUp ? 'Sign up' : 'Sign in'} with Email
-        </button>
+          {isLoading ? (
+            <>
+              <Loader size={16} variant="default" />
+              {isSignUp ? 'Creating account...' : 'Signing in...'}
+            </>
+          ) : (
+            <>
+              {isSignUp ? 'Sign up' : 'Sign in'} with Email
+            </>
+          )}
+        </Button>
 
         <div className="text-center">
-          <button
+          <Button
             type="button"
+            variant="link"
             onClick={() => setIsSignUp(!isSignUp)}
-            className="text-purple hover:text-purple-700"
+            disabled={isLoading}
           >
             {isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up'}
-          </button>
+          </Button>
         </div>
       </form>
 
-      <div className="mt-6 space-y-4">
-        <button
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t border-border" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <Button
+          type="button"
+          variant="outline"
           onClick={onGoogleSignIn}
-          className="w-full py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm text-gray-700 dark:text-white bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple"
+          disabled={isLoading}
+          className="w-full"
+          size="lg"
         >
+          <KeyRound className="h-4 w-4 mr-2" />
           Sign in with Google
-        </button>
+        </Button>
       </div>
     </div>
   );

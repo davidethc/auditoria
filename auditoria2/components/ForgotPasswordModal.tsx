@@ -2,6 +2,19 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  SideSheet,
+  SideSheetContent,
+  SideSheetHeader,
+  SideSheetTitle,
+  SideSheetDescription,
+  SideSheetFooter,
+  SideSheetClose,
+} from '@/components/ui/side-sheet';
+import { Button } from '@/components/ui/button';
+import { Loader } from '@/components/ui/loader';
+import { toast } from '@/components/ui/toast';
+import { CheckCircle } from 'lucide-react';
 
 interface ForgotPasswordModalProps {
   isOpen: boolean;
@@ -16,6 +29,11 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
   const [isLoading, setIsLoading] = useState(false);
 
   const handleResetPassword = async () => {
+    if (!email) {
+      setError('Please enter your email address');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
 
@@ -25,39 +43,65 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
       });
       if (error) throw error;
       setSuccess(true);
+      toast.success('Reset link sent!', {
+        description: 'Please check your email inbox.',
+      });
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to send reset email');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send reset email';
+      setError(errorMessage);
+      toast.error('Error', {
+        description: errorMessage,
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (!isOpen) return null;
+  const handleClose = () => {
+    setEmail('');
+    setError('');
+    setSuccess(false);
+    onClose();
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
-        <h2 className="text-xl font-semibold mb-4">Reset Password</h2>
-        
+    <SideSheet open={isOpen} onOpenChange={handleClose} side="right" width="420px">
+      <SideSheetContent>
+        <SideSheetHeader>
+          <SideSheetTitle>Reset Password</SideSheetTitle>
+          <SideSheetDescription>
+            Enter your email address and we&apos;ll send you a link to reset your password.
+          </SideSheetDescription>
+        </SideSheetHeader>
+
         {success ? (
-          <div className="space-y-4">
-            <p className="text-green-600 dark:text-green-400">
-              Reset link has been sent to your email address. Please check your inbox.
-            </p>
-            <button
-              onClick={onClose}
-              className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Close
-            </button>
+          <div className="space-y-4 py-6">
+            <div className="flex flex-col items-center justify-center space-y-4 text-center">
+              <div className="rounded-full bg-green-100 dark:bg-green-900/30 p-3">
+                <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Email Sent!</h3>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Reset link has been sent to your email address. Please check your inbox.
+                </p>
+              </div>
+            </div>
+            <SideSheetFooter>
+              <Button onClick={handleClose} className="w-full">
+                Close
+              </Button>
+            </SideSheetFooter>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-4 py-6">
             {error && (
-              <p className="text-red-500 text-sm">{error}</p>
+              <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3">
+                <p className="text-sm text-destructive">{error}</p>
+              </div>
             )}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-sm font-medium text-foreground">
                 Email address
               </label>
               <input
@@ -65,29 +109,41 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
                 id="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isLoading) {
+                    handleResetPassword();
+                  }
+                }}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="you@example.com"
                 required
+                disabled={isLoading}
               />
             </div>
-            <div className="flex justify-end space-x-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="py-2 px-4 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100"
-              >
-                Cancel
-              </button>
-              <button
+            <SideSheetFooter>
+              <SideSheetClose asChild>
+                <Button variant="outline" onClick={handleClose} disabled={isLoading}>
+                  Cancel
+                </Button>
+              </SideSheetClose>
+              <Button
                 onClick={handleResetPassword}
-                disabled={isLoading}
-                className="py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                disabled={isLoading || !email}
+                className="min-w-[140px]"
               >
-                {isLoading ? 'Sending...' : 'Send Reset Link'}
-              </button>
-            </div>
+                {isLoading ? (
+                  <>
+                    <Loader size={16} variant="default" />
+                    Sending...
+                  </>
+                ) : (
+                  'Send Reset Link'
+                )}
+              </Button>
+            </SideSheetFooter>
           </div>
         )}
-      </div>
-    </div>
+      </SideSheetContent>
+    </SideSheet>
   );
 } 

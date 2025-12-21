@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
+import { Loader } from '@/components/ui/loader';
 
 // List of public routes that don't require authentication
 const publicRoutes = ['/login', '/signup', '/verify-email', '/reset-password', '/update-password'];
@@ -26,8 +27,10 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   // Show loading state while checking authentication
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-foreground">Loading...</div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background">
+        <Loader variant="cube" size={48}>
+          <span className="text-sm text-muted-foreground mt-4">Loading...</span>
+        </Loader>
       </div>
     );
   }
