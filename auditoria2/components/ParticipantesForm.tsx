@@ -20,6 +20,7 @@ interface ParticipantesFormProps {
   participantes: AuditoriaParticipante[];
   onSuccess: () => void;
   readOnly?: boolean;
+  currentUserId?: string; // ID del usuario actual para filtrar cuando es auditado
 }
 
 const rolesParticipante: { value: RolParticipante; label: string }[] = [
@@ -40,6 +41,7 @@ export function ParticipantesForm({
   participantes,
   onSuccess,
   readOnly = false,
+  currentUserId,
 }: ParticipantesFormProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -47,9 +49,12 @@ export function ParticipantesForm({
   const [isAdding, setIsAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Solo cargar usuarios si NO es readOnly (auditados no necesitan ver la lista completa)
   useEffect(() => {
-    loadUsers();
-  }, []);
+    if (!readOnly) {
+      loadUsers();
+    }
+  }, [readOnly]);
 
   const loadUsers = async () => {
     try {
@@ -59,7 +64,13 @@ export function ParticipantesForm({
         .in('role', ['auditado', 'auditor', 'auditor_interno'])
         .order('full_name', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error cargando usuarios:', error);
+        throw error;
+      }
+      
+      console.log('✅ Usuarios cargados:', data?.length || 0, 'usuarios');
+      console.log('📋 Usuarios:', data);
       setUsers(data || []);
     } catch (err) {
       console.error('Error cargando usuarios:', err);
@@ -152,6 +163,11 @@ export function ParticipantesForm({
     user => !participantes.some(p => p.user_id === user.id)
   );
 
+  // Si es readOnly y hay currentUserId, filtrar solo la participación del usuario actual
+  const participantesAMostrar = readOnly && currentUserId
+    ? participantes.filter(p => p.user_id === currentUserId)
+    : participantes;
+
   return (
     <div className="space-y-6">
       {/* Formulario para agregar participantes */}
@@ -236,16 +252,19 @@ export function ParticipantesForm({
       {/* Lista de participantes */}
       <div className="rounded-lg border bg-card p-6 space-y-4">
         <h3 className="text-lg font-semibold">
-          Participantes ({participantes.length})
+          {readOnly && currentUserId ? 'Mi Participación' : `Participantes (${participantesAMostrar.length})`}
         </h3>
 
-        {participantes.length === 0 ? (
+        {participantesAMostrar.length === 0 ? (
           <div className="text-center py-8 text-sm text-muted-foreground">
-            No hay participantes agregados aún
+            {readOnly && currentUserId 
+              ? 'No estás participando en esta auditoría'
+              : 'No hay participantes agregados aún'
+            }
           </div>
         ) : (
           <div className="space-y-3">
-            {participantes.map((participante) => {
+            {participantesAMostrar.map((participante) => {
               const user = participante.user as {
                 id: string;
                 full_name: string | null;

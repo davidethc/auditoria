@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/utils/supabase';
 import { Loader } from '@/components/ui/loader';
-import { AlertCircle, FileText, Plus } from 'lucide-react';
+import { AlertCircle, FileText } from 'lucide-react';
 import { ListaActividadesAuditor } from '@/components/ListaActividadesAuditor';
 import { CrearAuditoriaModal } from '@/components/CrearAuditoriaModal';
 import { ListaAuditorias } from '@/components/ListaAuditorias';
+import { ListaAuditoriasParticipante } from '@/components/ListaAuditoriasParticipante';
 import type { AuditActivity } from '@/components/TablaActividades';
-import type { Auditoria } from '@/types/auditorias';
 
 type UserRole = 'auditado' | 'auditor' | 'auditor_interno';
 
@@ -79,18 +79,47 @@ export default function AuditoriasPage() {
     );
   }
 
-  // Verificar que es auditor o auditor_interno
-  if (!user || (userRole !== 'auditor' && userRole !== 'auditor_interno')) {
+  if (!user) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <AlertCircle className="h-12 w-12 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">
-          Solo los auditores pueden acceder a esta sección.
+          Debes iniciar sesión para acceder.
         </p>
       </div>
     );
   }
 
+  // Vista para AUDITADOS (solo ven auditorías donde son participantes)
+  if (userRole === 'auditado') {
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-primary/10">
+            <FileText className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Mis Auditorías</h1>
+            <p className="text-sm text-muted-foreground">
+              Auditorías donde participas
+            </p>
+          </div>
+        </div>
+
+        {/* Lista de auditorías donde es participante */}
+        <section>
+          <h2 className="text-lg font-semibold mb-4">Auditorías Asignadas</h2>
+          <ListaAuditoriasParticipante
+            key={`auditorias-participante-${refreshKey}`}
+            userId={user.id}
+          />
+        </section>
+      </div>
+    );
+  }
+
+  // Vista para AUDITORES y AUDITORES INTERNOS
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -142,4 +171,3 @@ export default function AuditoriasPage() {
     </div>
   );
 }
-

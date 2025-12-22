@@ -13,9 +13,6 @@ import {
   FileText,
   Users,
   Send,
-  Play,
-  FileCheck,
-  CheckCircle2,
   AlertCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -66,37 +63,44 @@ export default function AuditoriaDetailPage() {
     }
   }, [authLoading]);
 
-  useEffect(() => {
-    if (params.id && userRole) {
-      loadAuditoria();
-    }
-  }, [params.id, userRole]);
-
   const loadAuditoria = async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const { data, error: auditoriaError } = await supabase
+      // Primero verificar que la auditoría existe (sin JOIN estricto)
+      const { data: auditoriaData, error: auditoriaError } = await supabase
         .from('auditorias')
-        .select(`
-          *,
-          activity:audit_activities!inner(
-            id,
-            activity_number,
-            activity_description,
-            start_date,
-            end_date,
-            priority,
-            component,
-            subcomponent
-          ),
-          preparacion:auditoria_preparacion(*)
-        `)
+        .select('*')
         .eq('id', params.id)
-        .single();
+        .maybeSingle();
 
-      if (auditoriaError) throw auditoriaError;
+      if (auditoriaError) {
+        console.error('❌ Error obteniendo auditoría:', auditoriaError);
+        throw auditoriaError;
+      }
+
+      if (!auditoriaData) {
+        setError('Auditoría no encontrada o no tienes permisos para verla');
+        setIsLoading(false);
+        return;
+      }
+
+      // Cargar actividad relacionada (puede no existir)
+      const { data: activityData } = await supabase
+        .from('audit_activities')
+        .select('id, activity_number, activity_description, start_date, end_date, priority, component, subcomponent')
+        .eq('id', auditoriaData.activity_id)
+        .maybeSingle();
+
+      // Cargar preparación (puede no existir)
+      const { data: preparacionData } = await supabase
+        .from('auditoria_preparacion')
+        .select('*')
+        .eq('auditoria_id', params.id)
+        .order('preparada_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
       // Cargar participantes
       const { data: participantes } = await supabase
@@ -112,17 +116,37 @@ export default function AuditoriaDetailPage() {
         `)
         .eq('auditoria_id', params.id);
 
+      console.log('✅ Auditoría cargada:', {
+        id: auditoriaData.id,
+        estado: auditoriaData.estado,
+        tieneActividad: !!activityData,
+        tienePreparacion: !!preparacionData,
+        participantes: participantes?.length || 0
+      });
+
       setAuditoria({
-        ...data,
+        ...auditoriaData,
+        activity: activityData || undefined,
+        preparacion: preparacionData || undefined,
         participantes: participantes || []
       });
     } catch (err) {
-      console.error('Error cargando auditoría:', err);
-      setError('Error al cargar la auditoría');
+      console.error('❌ Error cargando auditoría:', err);
+      const errorMessage = err instanceof Error 
+        ? err.message 
+        : 'Error al cargar la auditoría. Verifica las políticas RLS.';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (params.id && userRole) {
+      loadAuditoria();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.id, userRole]);
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
@@ -160,9 +184,36 @@ export default function AuditoriaDetailPage() {
     );
   }
 
-  const activity = auditoria.activity as any;
+  // Tipo seguro para activity
+  interface ActivityData {
+    id: string;
+    activity_number: number;
+    activity_description: string;
+    start_date: string | null;
+    end_date: string | null;
+    priority: string | null;
+    component: string | null;
+    subcomponent: string | null;
+  }
+
+  const activity = (auditoria.activity as ActivityData | ActivityData[] | null) 
+    ? (Array.isArray(auditoria.activity) ? auditoria.activity[0] : auditoria.activity) as ActivityData
+    : null;
+  
   const config = estadoConfig[auditoria.estado] || estadoConfig.PLANIFICADA;
   const preparacion = Array.isArray(auditoria.preparacion) ? auditoria.preparacion[0] : auditoria.preparacion;
+
+  // Determinar permisos según el rol
+  const esAuditorResponsable = auditoria.auditor_responsable_id === user?.id;
+  const esAuditorInterno = userRole === 'auditor_interno';
+  const esParticipante = auditoria.participantes?.some(
+    (p) => p.user?.id === user?.id
+  ) || false;
+  
+  // Los auditados pueden ver pero no editar
+  const puedeEditar = (esAuditorResponsable || esAuditorInterno) && auditoria.estado !== 'CERRADA';
+  const puedeGestionarEstados = esAuditorResponsable || esAuditorInterno;
+  const puedeVer = esAuditorResponsable || esAuditorInterno || esParticipante;
 
   return (
     <div className="space-y-6">
@@ -184,10 +235,12 @@ export default function AuditoriaDetailPage() {
           </div>
         </div>
 
-        <GestorEstados
-          auditoria={auditoria}
-          onEstadoChange={loadAuditoria}
-        />
+        {puedeGestionarEstados && puedeVer && (
+          <GestorEstados
+            auditoria={auditoria}
+            onEstadoChange={loadAuditoria}
+          />
+        )}
       </div>
 
       {/* Información general */}
@@ -265,7 +318,7 @@ export default function AuditoriaDetailPage() {
             auditoriaId={auditoria.id}
             preparacion={preparacion}
             onSuccess={loadAuditoria}
-            readOnly={auditoria.estado !== 'PLANIFICADA'}
+            readOnly={!puedeEditar || auditoria.estado !== 'PLANIFICADA'}
           />
         )}
 
@@ -274,7 +327,8 @@ export default function AuditoriaDetailPage() {
             auditoriaId={auditoria.id}
             participantes={auditoria.participantes || []}
             onSuccess={loadAuditoria}
-            readOnly={auditoria.estado === 'CERRADA'}
+            readOnly={!puedeEditar}
+            currentUserId={user?.id}
           />
         )}
 

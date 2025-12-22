@@ -159,7 +159,6 @@ export function GestorEstados({ auditoria, onEstadoChange }: GestorEstadosProps)
             </div>
             {Object.entries(flujoEstados).map(([estado, info]) => {
               const estadoKey = estado as AuditoriaEstado;
-              const esCerrada = estadoKey === 'CERRADA';
               const esActual = estadoKey === auditoria.estado;
 
               if (esActual) return null;

@@ -17,10 +17,52 @@ import {
   Play,
   FileCheck
 } from 'lucide-react';
-import type { Auditoria } from '@/types/auditorias';
 import type { LucideIcon } from 'lucide-react';
 
-interface ListaAuditoriasProps {
+interface Auditoria {
+  id: string;
+  estado: string;
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
+  creada_at: string;
+  rol_en_auditoria: string;
+  estado_participacion: string;
+  activity?: {
+    id: string;
+    activity_number: number;
+    activity_description: string;
+    start_date: string | null;
+    end_date: string | null;
+    priority: string | null;
+  };
+}
+
+interface ParticipanteData {
+  id: string;
+  auditoria_id: string;
+  rol_en_auditoria: string;
+  estado_participacion: string;
+}
+
+interface ActivityData {
+  id: string;
+  activity_number: number;
+  activity_description: string;
+  start_date: string | null;
+  end_date: string | null;
+  priority: string | null;
+}
+
+interface AuditoriaData {
+  id: string;
+  estado: string;
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
+  creada_at: string;
+  activity: ActivityData | ActivityData[] | null;
+}
+
+interface ListaAuditoriasParticipanteProps {
   userId: string;
 }
 
@@ -32,7 +74,14 @@ const estadoConfig: Record<string, { label: string; variant: 'default' | 'destru
   CERRADA: { label: 'Cerrada', variant: 'secondary', icon: CheckCircle2 },
 };
 
-export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
+const estadoParticipacionConfig: Record<string, { label: string; variant: 'default' | 'destructive' | 'secondary' | 'outline' }> = {
+  PENDIENTE: { label: 'Pendiente', variant: 'outline' },
+  NOTIFICADO: { label: 'Notificado', variant: 'secondary' },
+  ACEPTADO: { label: 'Aceptado', variant: 'default' },
+  RECHAZADO: { label: 'Rechazado', variant: 'destructive' },
+};
+
+export function ListaAuditoriasParticipante({ userId }: ListaAuditoriasParticipanteProps) {
   const router = useRouter();
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,12 +91,41 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
     setIsLoading(true);
     setError(null);
 
+    console.log('🔍 Cargando auditorías para usuario:', userId);
+
     try {
-      const { data, error: auditoriasError } = await supabase
+      // Primero, verificar si hay participantes
+      const { data: participantesData, error: participantesError } = await supabase
+        .from('auditoria_participantes')
+        .select('id, auditoria_id, rol_en_auditoria, estado_participacion')
+        .eq('user_id', userId);
+
+      if (participantesError) {
+        console.error('❌ Error obteniendo participantes:', participantesError);
+        throw participantesError;
+      }
+
+      console.log('✅ Participantes encontrados:', participantesData?.length || 0);
+
+      if (!participantesData || participantesData.length === 0) {
+        console.log('ℹ️ No hay participantes asignados');
+        setAuditorias([]);
+        return;
+      }
+
+      // Obtener IDs de auditorías
+      const auditoriaIds = participantesData.map(p => p.auditoria_id);
+
+      // Buscar auditorías con sus actividades
+      const { data: auditoriasData, error: auditoriasError } = await supabase
         .from('auditorias')
         .select(`
-          *,
-          activity:audit_activities!inner(
+          id,
+          estado,
+          fecha_inicio,
+          fecha_fin,
+          creada_at,
+          activity:audit_activities(
             id,
             activity_number,
             activity_description,
@@ -56,15 +134,56 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
             priority
           )
         `)
-        .eq('auditor_responsable_id', userId)
+        .in('id', auditoriaIds)
         .order('creada_at', { ascending: false });
 
-      if (auditoriasError) throw auditoriasError;
+      if (auditoriasError) {
+        console.error('❌ Error obteniendo auditorías:', auditoriasError);
+        throw auditoriasError;
+      }
 
-      setAuditorias(data || []);
+      console.log('✅ Auditorías encontradas:', auditoriasData?.length || 0);
+
+      // Combinar datos de participantes con auditorías
+      const formattedAuditorias: Auditoria[] = (auditoriasData || [])
+        .map((auditoria: AuditoriaData) => {
+          const participante = participantesData.find(
+            (p: ParticipanteData) => p.auditoria_id === auditoria.id
+          );
+          
+          // Manejar activity que puede ser objeto único, array o null
+          let activity: ActivityData | undefined = undefined;
+          if (auditoria.activity) {
+            if (Array.isArray(auditoria.activity)) {
+              activity = auditoria.activity[0] || undefined;
+            } else {
+              activity = auditoria.activity;
+            }
+          }
+          
+          return {
+            id: auditoria.id,
+            estado: auditoria.estado,
+            fecha_inicio: auditoria.fecha_inicio,
+            fecha_fin: auditoria.fecha_fin,
+            creada_at: auditoria.creada_at,
+            rol_en_auditoria: participante?.rol_en_auditoria || 'AUDITADO',
+            estado_participacion: participante?.estado_participacion || 'PENDIENTE',
+            activity: activity,
+          };
+        })
+        .filter((auditoria: Auditoria) => auditoria !== null && auditoria !== undefined);
+
+      console.log('✅ Auditorías formateadas:', formattedAuditorias.length);
+      console.log('📋 Datos:', formattedAuditorias);
+      
+      setAuditorias(formattedAuditorias);
     } catch (err) {
-      console.error('Error cargando auditorías:', err);
-      setError('Error al cargar auditorías');
+      console.error('❌ Error cargando auditorías:', err);
+      const errorMessage = err instanceof Error 
+        ? err.message 
+        : 'Error al cargar auditorías. Verifica las políticas RLS.';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -110,10 +229,10 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
       <div className="rounded-lg border bg-card p-8 text-center">
         <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
         <p className="text-sm text-muted-foreground">
-          No has creado ninguna auditoría aún.
+          No estás participando en ninguna auditoría aún.
         </p>
         <p className="text-xs text-muted-foreground mt-2">
-          Crea una auditoría desde una actividad asignada
+          Aparecerán aquí cuando un auditor te asigne como participante
         </p>
       </div>
     );
@@ -122,7 +241,6 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Mis Auditorías</h3>
         <Badge variant="secondary">{auditorias.length} auditoría{auditorias.length !== 1 ? 's' : ''}</Badge>
       </div>
 
@@ -130,14 +248,8 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
         {auditorias.map((auditoria) => {
           const config = estadoConfig[auditoria.estado] || estadoConfig.PLANIFICADA;
           const EstadoIcon = config.icon;
-          const activity = auditoria.activity as {
-            id: string;
-            activity_number: number;
-            activity_description: string;
-            start_date: string | null;
-            end_date: string | null;
-            priority: string | null;
-          } | undefined;
+          const activity = auditoria.activity;
+          const estadoParticipacion = estadoParticipacionConfig[auditoria.estado_participacion] || estadoParticipacionConfig.PENDIENTE;
 
           return (
             <div
@@ -147,11 +259,13 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 space-y-3">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <Badge variant={config.variant} className="gap-1.5">
                       <EstadoIcon className="h-3 w-3" />
                       {config.label}
                     </Badge>
+                    <Badge variant="outline">{auditoria.rol_en_auditoria}</Badge>
+                    <Badge variant={estadoParticipacion.variant}>{estadoParticipacion.label}</Badge>
                     {activity && (
                       <span className="text-sm text-muted-foreground">
                         Actividad #{activity.activity_number}
@@ -178,9 +292,6 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
                         <span>Fin: {formatDate(auditoria.fecha_fin)}</span>
                       </div>
                     )}
-                    <div className="flex items-center gap-1">
-                      <span>Creada: {format(new Date(auditoria.creada_at), 'dd/MM/yyyy', { locale: es })}</span>
-                    </div>
                   </div>
                 </div>
 
@@ -193,4 +304,5 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
     </div>
   );
 }
+
 
