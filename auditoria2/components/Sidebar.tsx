@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  FileCheck,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useSidebar } from '@/contexts/SidebarContext';
@@ -75,9 +76,20 @@ const navItems: NavItem[] = [
     icon: Users,
   },
   {
+    title: 'Guía de Flujos',
+    href: '/guia-flujos',
+    icon: ClipboardList,
+  },
+  {
     title: 'Settings',
     href: '/settings',
     icon: Settings,
+  },
+  {
+    title: 'Revisión de Informes',
+    href: '/auditorias/revision',
+    icon: FileCheck,
+    requiresRole: 'auditor_interno',
   },
   {
     title: 'Administración',

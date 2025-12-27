@@ -105,12 +105,19 @@ export function ListaActividadesAuditor({
         .select('activity_id')
         .eq('auditor_responsable_id', userId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error cargando auditorías existentes:', error);
+        // No lanzar error, solo loguear - esto es opcional
+        setAuditoriasExistentes(new Set());
+        return;
+      }
 
-      const activityIds = new Set((data || []).map(a => a.activity_id));
+      const activityIds = new Set((data || []).map(a => a.activity_id).filter(Boolean));
       setAuditoriasExistentes(activityIds);
+      console.log('✅ Auditorías existentes cargadas:', activityIds.size);
     } catch (err) {
-      console.error('Error cargando auditorías existentes:', err);
+      console.error('❌ Error inesperado cargando auditorías existentes:', err);
+      setAuditoriasExistentes(new Set());
     }
   };
 

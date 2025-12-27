@@ -58,6 +58,29 @@ export function CrearAuditoriaModal({
     setIsCreating(true);
 
     try {
+      console.log('📝 Creando auditoría con datos:', {
+        activity_id: activity.id,
+        auditor_responsable_id: userId,
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin,
+      });
+
+      // Verificar que el usuario sea auditor o auditor_interno
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', userId)
+        .single();
+
+      if (userError) {
+        console.error('❌ Error verificando rol:', userError);
+        throw new Error('No se pudo verificar tu rol. Asegúrate de estar autenticado.');
+      }
+
+      if (userData && !['auditor', 'auditor_interno'].includes(userData.role)) {
+        throw new Error('Solo los auditores pueden crear auditorías.');
+      }
+
       // Crear la auditoría
       const { data: auditoria, error: createError } = await supabase
         .from('auditorias')
@@ -72,17 +95,20 @@ export function CrearAuditoriaModal({
         .select()
         .single();
 
-      if (createError) throw createError;
+      if (createError) {
+        console.error('❌ Error detallado:', createError);
+        throw createError;
+      }
 
+      console.log('✅ Auditoría creada exitosamente:', auditoria);
       onSuccess();
       onClose();
     } catch (err) {
-      console.error('Error creando auditoría:', err);
-      setError(
-        err instanceof Error 
-          ? err.message 
-          : 'Error al crear la auditoría. Intenta nuevamente.'
-      );
+      console.error('❌ Error creando auditoría:', err);
+      const errorMessage = err instanceof Error 
+        ? err.message 
+        : (err as any)?.message || 'Error al crear la auditoría. Intenta nuevamente.';
+      setError(errorMessage);
     } finally {
       setIsCreating(false);
     }

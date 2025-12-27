@@ -5,7 +5,7 @@ import { supabase } from '@/utils/supabase';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/ui/loader';
-import { AlertCircle, Plus, X, UserPlus, Send } from 'lucide-react';
+import { AlertCircle, Plus, X, UserPlus } from 'lucide-react';
 import type { AuditoriaParticipante, RolParticipante, EstadoParticipacion } from '@/types/auditorias';
 
 interface User {
@@ -65,12 +65,10 @@ export function ParticipantesForm({
         .order('full_name', { ascending: true });
 
       if (error) {
-        console.error('❌ Error cargando usuarios:', error);
+        console.error('Error cargando usuarios:', error);
         throw error;
       }
       
-      console.log('✅ Usuarios cargados:', data?.length || 0, 'usuarios');
-      console.log('📋 Usuarios:', data);
       setUsers(data || []);
     } catch (err) {
       console.error('Error cargando usuarios:', err);
@@ -140,23 +138,6 @@ export function ParticipantesForm({
     }
   };
 
-  const handleNotificarParticipante = async (participanteId: string) => {
-    try {
-      const { error } = await supabase
-        .from('auditoria_participantes')
-        .update({
-          estado_participacion: 'NOTIFICADO',
-          fecha_notificacion: new Date().toISOString(),
-        })
-        .eq('id', participanteId);
-
-      if (error) throw error;
-      onSuccess();
-    } catch (err) {
-      console.error('Error notificando participante:', err);
-      setError('Error al notificar participante');
-    }
-  };
 
   // Filtrar usuarios disponibles (no participantes)
   const availableUsers = users.filter(
@@ -289,28 +270,15 @@ export function ParticipantesForm({
                     <p className="text-sm text-muted-foreground mt-1">{user?.email}</p>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {!readOnly && participante.estado_participacion === 'PENDIENTE' && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleNotificarParticipante(participante.id)}
-                        className="gap-2"
-                      >
-                        <Send className="h-3 w-3" />
-                        Notificar
-                      </Button>
-                    )}
-                    {!readOnly && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleRemoveParticipante(participante.id)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
+                  {!readOnly && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleRemoveParticipante(participante.id)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               );
             })}

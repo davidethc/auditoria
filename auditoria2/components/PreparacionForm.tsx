@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
 import { Button } from '@/components/ui/button';
 import { Loader } from '@/components/ui/loader';
-import { AlertCircle, Save, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Save } from 'lucide-react';
 import type { AuditoriaPreparacion } from '@/types/auditorias';
 
 interface PreparacionFormProps {
@@ -41,24 +41,21 @@ export function PreparacionForm({
     }
   }, [preparacion]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(false);
-
-    if (!objetivo || !alcance || !criterios) {
+  const handleGuardar = async () => {
+    if (!objetivo.trim() || !alcance.trim() || !criterios.trim()) {
       setError('Los campos Objetivo, Alcance y Criterios son obligatorios');
       return;
     }
 
     setIsSaving(true);
+    setError(null);
+    setSuccess(false);
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No hay sesión activa');
 
       if (preparacion) {
-        // Actualizar preparación existente
         const { error: updateError } = await supabase
           .from('auditoria_preparacion')
           .update({
@@ -73,7 +70,6 @@ export function PreparacionForm({
 
         if (updateError) throw updateError;
       } else {
-        // Crear nueva preparación
         const { error: insertError } = await supabase
           .from('auditoria_preparacion')
           .insert({
@@ -108,11 +104,12 @@ export function PreparacionForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <div className="space-y-6">
       <div className="rounded-lg border bg-card p-6 space-y-6">
-        <h3 className="text-lg font-semibold">Preparación del Plan de Auditoría</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Preparación del Plan de Auditoría</h3>
+        </div>
 
-        {/* Objetivo */}
         <div className="space-y-2">
           <label htmlFor="objetivo" className="text-sm font-medium">
             Objetivo <span className="text-destructive">*</span>
@@ -128,7 +125,6 @@ export function PreparacionForm({
           />
         </div>
 
-        {/* Alcance */}
         <div className="space-y-2">
           <label htmlFor="alcance" className="text-sm font-medium">
             Alcance <span className="text-destructive">*</span>
@@ -144,7 +140,6 @@ export function PreparacionForm({
           />
         </div>
 
-        {/* Criterios */}
         <div className="space-y-2">
           <label htmlFor="criterios" className="text-sm font-medium">
             Criterios de Evaluación <span className="text-destructive">*</span>
@@ -160,7 +155,6 @@ export function PreparacionForm({
           />
         </div>
 
-        {/* Riesgos */}
         <div className="space-y-2">
           <label htmlFor="riesgos" className="text-sm font-medium">
             Riesgos Identificados
@@ -175,7 +169,6 @@ export function PreparacionForm({
           />
         </div>
 
-        {/* Metodología */}
         <div className="space-y-2">
           <label htmlFor="metodologia" className="text-sm font-medium">
             Metodología
@@ -190,7 +183,6 @@ export function PreparacionForm({
           />
         </div>
 
-        {/* Recursos */}
         <div className="space-y-2">
           <label htmlFor="recursos" className="text-sm font-medium">
             Recursos Necesarios
@@ -205,7 +197,6 @@ export function PreparacionForm({
           />
         </div>
 
-        {/* Error y success messages */}
         {error && (
           <div className="rounded-lg border border-destructive bg-destructive/10 p-4">
             <div className="flex items-center gap-2 text-destructive">
@@ -224,11 +215,11 @@ export function PreparacionForm({
           </div>
         )}
 
-        {/* Botones */}
         {!readOnly && (
           <div className="flex justify-end">
             <Button
-              type="submit"
+              type="button"
+              onClick={handleGuardar}
               disabled={isSaving}
               className="gap-2"
             >
@@ -247,7 +238,6 @@ export function PreparacionForm({
           </div>
         )}
       </div>
-    </form>
+    </div>
   );
 }
-

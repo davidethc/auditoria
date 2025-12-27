@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/utils/supabase';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,9 @@ import {
   FileText,
   Users,
   Send,
-  AlertCircle
+  AlertCircle,
+  PlayCircle,
+  Info
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -21,6 +23,7 @@ import type { AuditoriaCompleta } from '@/types/auditorias';
 import { PreparacionForm } from '@/components/PreparacionForm';
 import { ParticipantesForm } from '@/components/ParticipantesForm';
 import { GestorEstados } from '@/components/GestorEstados';
+import { BotonNotificar } from '@/components/BotonNotificar';
 
 type UserRole = 'auditado' | 'auditor' | 'auditor_interno';
 
@@ -35,6 +38,7 @@ const estadoConfig: Record<string, { label: string; variant: 'default' | 'destru
 export default function AuditoriaDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
   const { user, isLoading: authLoading } = useAuth();
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [auditoria, setAuditoria] = useState<AuditoriaCompleta | null>(null);
@@ -102,19 +106,42 @@ export default function AuditoriaDetailPage() {
         .limit(1)
         .maybeSingle();
 
-      // Cargar participantes
-      const { data: participantes } = await supabase
+      // Cargar participantes (sin JOIN porque user_id referencia auth.users, no public.users)
+      const { data: participantesData, error: participantesError } = await supabase
         .from('auditoria_participantes')
-        .select(`
-          *,
-          user:users!user_id(
-            id,
-            full_name,
-            email,
-            role
-          )
-        `)
+        .select('*')
         .eq('auditoria_id', params.id);
+
+      if (participantesError) {
+        console.error('❌ Error obteniendo participantes:', participantesError);
+        // No lanzar error, continuar sin participantes
+      }
+
+      // Cargar datos de usuarios por separado
+      let participantes = participantesData || [];
+      if (participantes.length > 0) {
+        const userIds = [...new Set(participantes.map(p => p.user_id).filter(Boolean))];
+        
+        if (userIds.length > 0) {
+          const { data: usersData } = await supabase
+            .from('users')
+            .select('id, full_name, email, role')
+            .in('id', userIds);
+
+          if (usersData) {
+            const usersMap = usersData.reduce((acc, user) => {
+              acc[user.id] = user;
+              return acc;
+            }, {} as Record<string, { id: string; full_name: string | null; email: string; role: string }>);
+
+            // Combinar datos
+            participantes = participantes.map(p => ({
+              ...p,
+              user: usersMap[p.user_id] || null,
+            }));
+          }
+        }
+      }
 
       console.log('✅ Auditoría cargada:', {
         id: auditoriaData.id,
@@ -235,7 +262,55 @@ export default function AuditoriaDetailPage() {
           </div>
         </div>
 
-        {puedeGestionarEstados && puedeVer && (
+        {puedeGestionarEstados && puedeVer && auditoria.estado === 'PLANIFICADA' && (
+          <div className="flex gap-2">
+            <BotonNotificar
+              auditoria={auditoria}
+              onSuccess={loadAuditoria}
+            />
+            <Button
+              onClick={async () => {
+                if (!confirm('¿Estás seguro de iniciar la ejecución? Esto cambiará el estado a EN_EJECUCION y podrás registrar observaciones.')) {
+                  return;
+                }
+                try {
+                  const { data, error } = await supabase
+                    .from('auditorias')
+                    .update({ 
+                      estado: 'EN_EJECUCION',
+                      ejecucion_iniciada: true,
+                      fecha_inicio_ejecucion: new Date().toISOString()
+                    })
+                    .eq('id', auditoria.id)
+                    .select();
+                  
+                  if (error) {
+                    console.error('Error detallado:', error);
+                    alert(`Error al cambiar el estado: ${error.message || JSON.stringify(error)}`);
+                    return;
+                  }
+                  
+                  if (data && data.length > 0) {
+                    loadAuditoria();
+                    alert('✅ Estado cambiado a EN_EJECUCION. Ahora puedes ver el tab de Ejecución.');
+                  } else {
+                    alert('⚠️ No se pudo actualizar. Verifica tus permisos.');
+                  }
+                } catch (err) {
+                  console.error('Error:', err);
+                  const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+                  alert(`Error al cambiar el estado: ${errorMessage}`);
+                }
+              }}
+              variant="outline"
+              className="gap-2"
+            >
+              <PlayCircle className="h-4 w-4" />
+              Iniciar Ejecución
+            </Button>
+          </div>
+        )}
+        {puedeGestionarEstados && puedeVer && auditoria.estado !== 'PLANIFICADA' && (
           <GestorEstados
             auditoria={auditoria}
             onEstadoChange={loadAuditoria}
@@ -274,10 +349,10 @@ export default function AuditoriaDetailPage() {
 
       {/* Tabs */}
       <div className="border-b">
-        <div className="flex gap-4">
+        <div className="flex gap-4 overflow-x-auto">
           <button
             onClick={() => setActiveTab('preparacion')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'preparacion'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -288,7 +363,7 @@ export default function AuditoriaDetailPage() {
           </button>
           <button
             onClick={() => setActiveTab('participantes')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'participantes'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -297,9 +372,35 @@ export default function AuditoriaDetailPage() {
             <Users className="h-4 w-4 inline mr-2" />
             Participantes
           </button>
+          {auditoria.estado === 'EN_EJECUCION' && puedeEditar && (
+            <button
+              onClick={() => router.push(`/auditorias/${auditoria.id}/ejecucion`)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                pathname === `/auditorias/${auditoria.id}/ejecucion`
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <FileText className="h-4 w-4 inline mr-2" />
+              Ejecución
+            </button>
+          )}
+          {(auditoria.estado === 'EN_REPORTE' || auditoria.estado === 'CERRADA') && (
+            <button
+              onClick={() => router.push(`/auditorias/${auditoria.id}/informe`)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                pathname === `/auditorias/${auditoria.id}/informe` || pathname?.includes('/informe')
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <FileText className="h-4 w-4 inline mr-2" />
+              Informe
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('comunicaciones')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === 'comunicaciones'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -310,6 +411,44 @@ export default function AuditoriaDetailPage() {
           </button>
         </div>
       </div>
+
+      {/* Mensajes informativos sobre el flujo según el estado */}
+      {auditoria.estado === 'PLANIFICADA' && puedeEditar && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800 p-4">
+          <div className="flex items-start gap-3">
+            <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                📋 Flujo de la Auditoría:
+              </p>
+              <ol className="text-xs text-blue-800 dark:text-blue-200 space-y-1 list-decimal list-inside">
+                <li><strong>Preparación</strong> (actual) → Completa objetivos, alcance y criterios</li>
+                <li><strong>Participantes</strong> → Agrega auditados y haz clic en &quot;Notificar Auditados&quot;</li>
+                <li><strong>Iniciar Ejecución</strong> → Usa el botón &quot;Iniciar Ejecución&quot; arriba a la derecha</li>
+                <li><strong>Ejecución</strong> → Aparecerá un nuevo tab para registrar observaciones</li>
+                <li><strong>Informe</strong> → Aparecerá cuando finalices la ejecución</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {auditoria.estado === 'EN_REPORTE' && puedeEditar && (
+        <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-800 p-4">
+          <div className="flex items-start gap-3">
+            <Info className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-green-900 dark:text-green-100 mb-1">
+                ✅ Ejecución Finalizada - Siguiente Paso:
+              </p>
+              <p className="text-xs text-green-800 dark:text-green-200">
+                La ejecución ya fue completada. Ahora debes crear el <strong>Informe Borrador</strong>. 
+                Haz clic en el tab <strong>&quot;Informe&quot;</strong> arriba para comenzar.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Contenido de tabs */}
       <div>

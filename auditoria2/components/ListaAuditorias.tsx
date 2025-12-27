@@ -43,28 +43,49 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
     setError(null);
 
     try {
-      const { data, error: auditoriasError } = await supabase
+      // Cargar auditorías sin JOIN para evitar problemas con RLS
+      const { data: auditoriasData, error: auditoriasError } = await supabase
         .from('auditorias')
-        .select(`
-          *,
-          activity:audit_activities!inner(
-            id,
-            activity_number,
-            activity_description,
-            start_date,
-            end_date,
-            priority
-          )
-        `)
+        .select('*')
         .eq('auditor_responsable_id', userId)
         .order('creada_at', { ascending: false });
 
       if (auditoriasError) throw auditoriasError;
 
-      setAuditorias(data || []);
+      if (!auditoriasData || auditoriasData.length === 0) {
+        setAuditorias([]);
+        return;
+      }
+
+      // Obtener IDs únicos de actividades
+      const activityIds = [...new Set(auditoriasData.map(a => a.activity_id).filter(Boolean))];
+
+      // Cargar actividades por separado
+      let activitiesMap: Record<string, any> = {};
+      if (activityIds.length > 0) {
+        const { data: activitiesData } = await supabase
+          .from('audit_activities')
+          .select('id, activity_number, activity_description, start_date, end_date, priority')
+          .in('id', activityIds);
+
+        if (activitiesData) {
+          activitiesMap = activitiesData.reduce((acc, act) => {
+            acc[act.id] = act;
+            return acc;
+          }, {} as Record<string, any>);
+        }
+      }
+
+      // Combinar datos
+      const auditoriasWithActivity = auditoriasData.map(auditoria => ({
+        ...auditoria,
+        activity: activitiesMap[auditoria.activity_id] || null,
+      }));
+
+      setAuditorias(auditoriasWithActivity);
     } catch (err) {
       console.error('Error cargando auditorías:', err);
-      setError('Error al cargar auditorías');
+      setError(err instanceof Error ? err.message : 'Error al cargar auditorías');
     } finally {
       setIsLoading(false);
     }

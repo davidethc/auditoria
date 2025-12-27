@@ -116,24 +116,10 @@ export function ListaAuditoriasParticipante({ userId }: ListaAuditoriasParticipa
       // Obtener IDs de auditorías
       const auditoriaIds = participantesData.map(p => p.auditoria_id);
 
-      // Buscar auditorías con sus actividades
+      // Buscar auditorías sin JOIN para evitar problemas con RLS
       const { data: auditoriasData, error: auditoriasError } = await supabase
         .from('auditorias')
-        .select(`
-          id,
-          estado,
-          fecha_inicio,
-          fecha_fin,
-          creada_at,
-          activity:audit_activities(
-            id,
-            activity_number,
-            activity_description,
-            start_date,
-            end_date,
-            priority
-          )
-        `)
+        .select('id, estado, fecha_inicio, fecha_fin, creada_at, activity_id')
         .in('id', auditoriaIds)
         .order('creada_at', { ascending: false });
 
@@ -144,22 +130,36 @@ export function ListaAuditoriasParticipante({ userId }: ListaAuditoriasParticipa
 
       console.log('✅ Auditorías encontradas:', auditoriasData?.length || 0);
 
+      // Obtener IDs únicos de actividades
+      const activityIds = [...new Set((auditoriasData || []).map(a => a.activity_id).filter(Boolean))];
+
+      // Cargar actividades por separado
+      let activitiesMap: Record<string, ActivityData> = {};
+      if (activityIds.length > 0) {
+        const { data: activitiesData, error: activitiesError } = await supabase
+          .from('audit_activities')
+          .select('id, activity_number, activity_description, start_date, end_date, priority')
+          .in('id', activityIds);
+
+        if (activitiesError) {
+          console.warn('⚠️ Error cargando actividades:', activitiesError);
+        } else if (activitiesData) {
+          activitiesMap = activitiesData.reduce((acc, act) => {
+            acc[act.id] = act;
+            return acc;
+          }, {} as Record<string, ActivityData>);
+        }
+      }
+
       // Combinar datos de participantes con auditorías
       const formattedAuditorias: Auditoria[] = (auditoriasData || [])
-        .map((auditoria: AuditoriaData) => {
+        .map((auditoria: any) => {
           const participante = participantesData.find(
             (p: ParticipanteData) => p.auditoria_id === auditoria.id
           );
           
-          // Manejar activity que puede ser objeto único, array o null
-          let activity: ActivityData | undefined = undefined;
-          if (auditoria.activity) {
-            if (Array.isArray(auditoria.activity)) {
-              activity = auditoria.activity[0] || undefined;
-            } else {
-              activity = auditoria.activity;
-            }
-          }
+          // Obtener actividad del mapa
+          const activity = auditoria.activity_id ? activitiesMap[auditoria.activity_id] : undefined;
           
           return {
             id: auditoria.id,

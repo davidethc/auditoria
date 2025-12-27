@@ -167,7 +167,7 @@ export default function PlanTrabajoPage() {
 
         if (!session) return;
 
-        // Query con TODAS las columnas
+        // Query con TODAS las columnas (sin JOIN con users porque auditor_id referencia auth.users)
         let query = supabase
           .from('audit_activities')
           .select(`
@@ -185,8 +185,7 @@ export default function PlanTrabajoPage() {
             component,
             subcomponent,
             year,
-            auditor_id,
-            users:auditor_id(full_name, email)
+            auditor_id
           `)
           .eq('plan_id', selectedPlan.id);
 
@@ -219,10 +218,29 @@ export default function PlanTrabajoPage() {
 
         console.log(`✅ ${data.length} actividades cargadas:`, data);
 
+        // Obtener IDs únicos de auditores para cargar sus datos
+        const auditorIds = [...new Set(data.map(act => act.auditor_id).filter(Boolean))];
+        
+        // Cargar datos de auditores desde public.users
+        let auditorsMap: Record<string, { full_name: string | null; email: string | null }> = {};
+        
+        if (auditorIds.length > 0) {
+          const { data: auditorsData } = await supabase
+            .from('users')
+            .select('id, full_name, email')
+            .in('id', auditorIds);
+          
+          if (auditorsData) {
+            auditorsMap = auditorsData.reduce((acc, user) => {
+              acc[user.id] = { full_name: user.full_name, email: user.email };
+              return acc;
+            }, {} as Record<string, { full_name: string | null; email: string | null }>);
+          }
+        }
+
         // Formatear datos con TODAS las columnas
         const formattedActivities: AuditActivity[] = (data || []).map((act) => {
-          // Manejar users que puede ser objeto o array
-          const user = Array.isArray(act.users) ? act.users[0] : act.users;
+          const auditor = act.auditor_id ? auditorsMap[act.auditor_id] : null;
           
           return {
             id: act.id,
@@ -240,7 +258,7 @@ export default function PlanTrabajoPage() {
             subcomponent: act.subcomponent,
             year: act.year,
             auditor_id: act.auditor_id,
-            auditor_name: user?.full_name || user?.email || null,
+            auditor_name: auditor?.full_name || auditor?.email || null,
           };
         });
 
