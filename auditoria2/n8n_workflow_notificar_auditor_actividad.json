@@ -1,0 +1,121 @@
+{
+  "name": "Notificar Auditor - Actividad Asignada/Validada",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "notificar-auditor-actividad",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-001",
+      "name": "Webhook - Recibir Solicitud",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "notificar-auditor-actividad"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Notificación recibida\", \"activity_id\": $json.body.activity_id } }}"
+      },
+      "id": "respond-001",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validar y extraer datos recibidos del webhook\nconst body = $input.item.json.body || $input.item.json;\n\n// Validar campos obligatorios\nif (!body.activity_id) {\n  throw new Error('Falta activity_id en el request');\n}\n\nif (!body.auditor_email) {\n  throw new Error('Falta auditor_email en el request');\n}\n\n// Preparar datos para el correo\nconst data = {\n  activity_id: body.activity_id,\n  activity_number: body.activity_number || 'N/A',\n  activity_description: body.activity_description || 'Sin descripción',\n  auditor_id: body.auditor_id || null,\n  auditor_email: body.auditor_email,\n  auditor_name: body.auditor_name || body.auditor_email.split('@')[0],\n  validation_status: body.validation_status || 'pendiente',\n  timestamp: body.timestamp || new Date().toISOString()\n};\n\n// Determinar tipo de notificación según estado de validación\nconst isValidationComplete = data.validation_status === 'cumplido';\nconst notificationType = isValidationComplete ? 'validada' : 'asignada';\n\nreturn [{\n  json: {\n    ...data,\n    notification_type: notificationType,\n    subject: isValidationComplete \n      ? `✅ Actividad #${data.activity_number} - Validada como Cumplida`\n      : `📋 Nueva Actividad Asignada #${data.activity_number}`\n  }\n}];"
+      },
+      "id": "code-001",
+      "name": "Code - Validar y Preparar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generar HTML del correo electrónico\nconst data = $input.item.json;\n\nconst statusBadge = data.validation_status === 'cumplido' \n  ? '<span style=\"background: #10b981; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 12px;\">✅ CUMPLIDA</span>'\n  : '<span style=\"background: #f59e0b; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 12px;\">⏳ PENDIENTE</span>';\n\nconst appUrl = 'http://localhost:3000';\nconst notificationTitle = data.notification_type === 'validada' ? '✅ Actividad Validada' : '📋 Nueva Actividad Asignada';\nconst notificationMessage = data.notification_type === 'validada' \n  ? 'La siguiente actividad ha sido <strong>validada como cumplida</strong> por el Auditor Interno:'\n  : 'Has sido asignado como <strong>responsable</strong> de la siguiente actividad de auditoría:';\n\nconst statusMessage = data.notification_type === 'validada' \n  ? '<div class=\"status-section\"><p style=\"margin: 0; font-size: 16px; color: #059669;\"><strong>✅ Esta actividad ha sido marcada como cumplida.</strong></p><p style=\"margin: 10px 0 0 0; font-size: 14px; color: #6b7280;\">Puedes proceder con la creación de la auditoría correspondiente.</p></div>'\n  : '<div class=\"status-section\"><p style=\"margin: 0; font-size: 16px; color: #2563eb;\"><strong>📋 Actividad pendiente de ejecución.</strong></p><p style=\"margin: 10px 0 0 0; font-size: 14px; color: #6b7280;\">Por favor, revisa esta actividad en el sistema y crea la auditoría correspondiente cuando estés listo.</p></div>';\n\nconst htmlTemplate = `<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body { \n      font-family: Arial, sans-serif; \n      line-height: 1.6; \n      color: #333; \n      background: #f3f4f6;\n      margin: 0;\n      padding: 0;\n    }\n    .container { \n      max-width: 600px; \n      margin: 20px auto; \n      padding: 0;\n      background: white;\n      border-radius: 8px;\n      box-shadow: 0 2px 4px rgba(0,0,0,0.1);\n    }\n    .header { \n      background: #2563eb; \n      color: white; \n      padding: 30px 20px; \n      border-radius: 8px 8px 0 0; \n      text-align: center;\n    }\n    .header h1 {\n      margin: 0 0 10px 0;\n      font-size: 24px;\n    }\n    .content { \n      padding: 30px 20px; \n      background: white;\n    }\n    .activity-box {\n      background: #f9fafb;\n      padding: 20px;\n      border-radius: 8px;\n      border-left: 4px solid #2563eb;\n      margin: 20px 0;\n    }\n    .activity-box h3 {\n      margin: 0 0 10px 0;\n      color: #2563eb;\n      font-size: 18px;\n    }\n    .activity-info {\n      margin-top: 15px;\n      font-size: 14px;\n      color: #6b7280;\n    }\n    .activity-info p {\n      margin: 8px 0;\n    }\n    .status-section {\n      text-align: center;\n      margin: 20px 0;\n      padding: 15px;\n      background: #eff6ff;\n      border-radius: 8px;\n    }\n    .button {\n      display: inline-block;\n      padding: 12px 24px;\n      background: #2563eb;\n      color: white;\n      text-decoration: none;\n      border-radius: 6px;\n      margin: 20px 0;\n      font-weight: bold;\n    }\n    .footer { \n      text-align: center; \n      padding: 20px; \n      color: #6b7280; \n      font-size: 12px; \n      background: #f9fafb;\n      border-radius: 0 0 8px 8px;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>${notificationTitle}</h1>\n      <p style=\"margin: 0; opacity: 0.9;\">Sistema de Auditoría Interna</p>\n    </div>\n\n    <div class=\"content\">\n      <p>\n        Hola <strong>${data.auditor_name}</strong>,\n      </p>\n\n      <p>${notificationMessage}</p>\n\n      <div class=\"activity-box\">\n        <h3>Actividad #${data.activity_number}</h3>\n        <p style=\"margin-top: 10px; font-size: 15px;\">\n          ${String(data.activity_description || 'Sin descripción').replace(/</g, '&lt;').replace(/>/g, '&gt;')}\n        </p>\n        <div class=\"activity-info\">\n          <p><strong>Estado de Validación:</strong> ${statusBadge}</p>\n          <p><strong>ID de Actividad:</strong> <code style=\"background: #e5e7eb; padding: 2px 6px; border-radius: 4px; font-size: 12px;\">${data.activity_id}</code></p>\n        </div>\n      </div>\n\n      ${statusMessage}\n\n      <div style=\"text-align: center; margin: 30px 0;\">\n        <a href=\"${appUrl}/plan-trabajo\" class=\"button\">\n          Ver Actividades en el Sistema\n        </a>\n      </div>\n\n      <p style=\"margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 13px;\">\n        <strong>Nota:</strong> Este es un correo automático del Sistema de Auditoría Interna.<br>\n        No responder a este mensaje.\n      </p>\n    </div>\n\n    <div class=\"footer\">\n      <p>\n        Sistema de Auditoría Interna<br>\n        Generado el ${new Date(data.timestamp).toLocaleDateString('es-ES', { \n          year: 'numeric', \n          month: 'long', \n          day: 'numeric',\n          hour: '2-digit',\n          minute: '2-digit'\n        })}<br>\n        © ${new Date().getFullYear()}\n      </p>\n    </div>\n  </div>\n</body>\n</html>`;\n\nreturn [{\n  json: {\n    ...data,\n    html: htmlTemplate\n  }\n}];"
+      },
+      "id": "code-002",
+      "name": "Code - Generar HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toEmail": "={{ $json.auditor_email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "gmail-001",
+      "name": "Gmail - Enviar Correo",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Recibir Solicitud": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code - Validar y Preparar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validar y Preparar": {
+      "main": [
+        [
+          {
+            "node": "Code - Generar HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generar HTML": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Enviar Correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-08T00:00:00.000Z",
+  "versionId": "1"
+}

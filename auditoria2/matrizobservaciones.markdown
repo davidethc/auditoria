@@ -1,0 +1,29 @@
+# Campos de la Matriz de Observaciones de Auditoría
+
+- N°
+- Auditor
+- N° de Informe
+- Fecha de Emisión del Informe
+- Fecha Envío Informe
+- Nombre de la Auditoría
+- N° de Observación
+- Título de la Observación
+- Descripción de la Observación
+- Recomendación
+- Estrategia
+- Entregable
+- Probabilidad
+- Impacto
+- Riesgo
+- Responsable de la Estrategia
+- Responsable de la Implementación
+- Fecha Inicio
+- Fecha Fin
+- Plazo (días laborables)
+- Fecha Final (no aplica)
+- Estado de la Observación
+- Porcentaje de Avance
+- Descripción del Avance
+- Nueva Fecha de Implementación
+- Fecha Real de Implementación
+- Descripción de Descargos

@@ -21,12 +21,31 @@ export default function EjecucionPage() {
   const [showFormulario, setShowFormulario] = useState(false);
   const [observacionSeleccionada, setObservacionSeleccionada] = useState<AuditoriaObservacion | null>(null);
   const [isFinalizando, setIsFinalizando] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     if (params.id && user) {
+      loadUserRole();
       loadAuditoria();
     }
   }, [params.id, user]);
+
+  const loadUserRole = async () => {
+    if (!user) return;
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+      
+      if (data) {
+        setUserRole(data.role);
+      }
+    } catch (err) {
+      console.error('Error cargando rol:', err);
+    }
+  };
 
   const loadAuditoria = async () => {
     setIsLoading(true);
@@ -201,6 +220,7 @@ export default function EjecucionPage() {
           onObservacionEdit={handleObservacionEdit}
           readOnly={false}
           currentUserId={user?.id}
+          userRole={userRole || undefined}
         />
       )}
     </div>

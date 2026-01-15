@@ -11,14 +11,12 @@ interface SocializacionInformeProps {
   informe: AuditoriaInforme;
   participantes: AuditoriaParticipante[];
   onSuccess: () => void;
-  currentUserId: string;
 }
 
 export function SocializacionInforme({
   informe,
   participantes,
   onSuccess,
-  currentUserId,
 }: SocializacionInformeProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +65,65 @@ export function SocializacionInforme({
     } catch (err) {
       console.error('Error guardando socialización:', err);
       setError('Error al guardar la socialización');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEnviarAAuditados = async () => {
+    if (!confirm('¿Estás seguro de enviar el informe a los auditados? Ellos podrán completar la estrategia y fechas de implementación.')) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      // Cambiar estado del informe a ENVIADO_A_AUDITADOS
+      const { error: updateError } = await supabase
+        .from('auditoria_informe')
+        .update({
+          estado: 'ENVIADO_A_AUDITADOS',
+        })
+        .eq('id', informe.id);
+
+      if (updateError) throw updateError;
+
+      // Actualizar auditoría
+      await supabase
+        .from('auditorias')
+        .update({ 
+          informe_final_enviado: true, 
+          fecha_informe_final: new Date().toISOString() 
+        })
+        .eq('id', informe.auditoria_id);
+
+      // Actualizar observaciones incluidas en el informe
+      if (informe.observaciones_enumeradas && Array.isArray(informe.observaciones_enumeradas)) {
+        const observacionIds = informe.observaciones_enumeradas
+          .map((obs: { id?: string }) => obs.id)
+          .filter(Boolean);
+
+        if (observacionIds.length > 0) {
+          const fechaActual = new Date().toISOString().split('T')[0];
+          
+          // Actualizar numero_informe, fecha_emision_informe y fecha_envio_informe
+          await supabase
+            .from('auditoria_observaciones')
+            .update({
+              numero_informe: informe.encabezado || null,
+              fecha_emision_informe: informe.fecha_inicio_informe || fechaActual,
+              fecha_envio_informe: fechaActual,
+            })
+            .in('id', observacionIds);
+        }
+      }
+
+      onSuccess();
+      alert('✅ Informe enviado a auditados exitosamente. Ahora pueden completar la estrategia y fechas.');
+    } catch (err) {
+      console.error('Error enviando a auditados:', err);
+      setError('Error al enviar el informe a auditados');
     } finally {
       setIsSaving(false);
     }
@@ -162,24 +219,45 @@ export function SocializacionInforme({
         </div>
 
         <div className="flex gap-2 justify-end pt-4 border-t">
-          <Button
-            type="button"
-            onClick={handleGuardar}
-            disabled={isSaving || !fechaSocializacion || participantesSeleccionados.length === 0}
-            className="gap-2"
-          >
-            {isSaving ? (
-              <>
-                <Loader variant="cube" size={16} />
-                Guardando...
-              </>
-            ) : (
-              <>
-                <Calendar className="h-4 w-4" />
-                Registrar Socialización
-              </>
-            )}
-          </Button>
+          {informe.estado === 'SOCIALIZADO' ? (
+            <Button
+              type="button"
+              onClick={handleEnviarAAuditados}
+              disabled={isSaving}
+              className="gap-2"
+            >
+              {isSaving ? (
+                <>
+                  <Loader variant="cube" size={16} />
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <Users className="h-4 w-4" />
+                  Enviar a Auditados
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={handleGuardar}
+              disabled={isSaving || !fechaSocializacion || participantesSeleccionados.length === 0}
+              className="gap-2"
+            >
+              {isSaving ? (
+                <>
+                  <Loader variant="cube" size={16} />
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <Calendar className="h-4 w-4" />
+                  Registrar Socialización
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
     </div>

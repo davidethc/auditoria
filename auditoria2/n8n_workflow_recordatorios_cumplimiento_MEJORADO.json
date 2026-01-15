@@ -1,0 +1,196 @@
+{
+  "name": "Recordatorios de Cumplimiento - 3 Meses Antes (Mejorado)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Cron - Diario 9 AM",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ksnehijfwxtfbspqvdwq.supabase.co/rest/v1/rpc/get_observaciones_vencimiento_proximo",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"dias_anticipacion\": 90 }",
+        "options": {}
+      },
+      "id": "http-consultar-observaciones",
+      "name": "HTTP Request - Obtener Observaciones de Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parsear respuesta de Supabase\nconst respuesta = $input.item.json;\n\n// Si es array, usar directamente; si es objeto, convertirlo a array\nlet observaciones = Array.isArray(respuesta) ? respuesta : [respuesta];\n\n// Filtrar observaciones válidas (con email)\nobservaciones = observaciones.filter(obs => \n  obs.responsable_implementacion_user && \n  obs.responsable_implementacion_user.email\n);\n\nif (observaciones.length === 0) {\n  return [];\n}\n\n// Preparar datos para cada observación\nreturn observaciones.map(obs => ({\n  json: {\n    observacion_id: obs.id,\n    auditoria_id: obs.auditoria_id,\n    numero_observacion: obs.numero_observacion || 0,\n    titulo: obs.titulo_observacion || 'Sin título',\n    descripcion: obs.descripcion_observacion || 'Sin descripción',\n    fecha_fin: obs.fecha_fin,\n    dias_restantes: obs.dias_restantes || 0,\n    estado_observacion: obs.estado_observacion || 'EN_PROCESO',\n    responsable_id: obs.responsable_implementacion,\n    responsable_nombre: obs.responsable_implementacion_user?.full_name || 'Responsable',\n    responsable_email: obs.responsable_implementacion_user?.email || '',\n    auditoria_nombre: obs.auditoria?.nombre || 'Auditoría',\n    auditoria_estado: obs.auditoria?.estado || 'EN_PROCESO'\n  }\n}));"
+      },
+      "id": "code-parsear-respuesta",
+      "name": "Code - Parsear Respuesta Supabase",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-tiene-observaciones",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-tiene-observaciones",
+      "name": "IF - ¿Hay Observaciones?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generar HTML del correo recordatorio\nconst obs = $json;\n\nconst fechaLimite = obs.fecha_fin ? new Date(obs.fecha_fin).toLocaleDateString('es-ES', {\n  year: 'numeric',\n  month: 'long',\n  day: 'numeric'\n}) : 'No definida';\n\nconst diasRestantes = obs.dias_restantes || 0;\nconst colorAlerta = diasRestantes <= 30 ? '#dc2626' : diasRestantes <= 60 ? '#f59e0b' : '#2563eb';\n\nconst html = `\n<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #f9fafb; }\n    .header { background: ${colorAlerta}; color: white; padding: 20px; border-radius: 8px 8px 0 0; text-align: center; }\n    .content { background: white; padding: 20px; border-radius: 0 0 8px 8px; }\n    .alert { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 15px 0; border-radius: 4px; }\n    .info-box { background: #f9fafb; padding: 15px; margin: 15px 0; border-radius: 4px; border: 1px solid #e5e7eb; }\n    .info-box h3 { margin-top: 0; color: #1f2937; }\n    .info-box p { margin: 8px 0; }\n    .badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; }\n    .badge-urgente { background: #fee2e2; color: #991b1b; }\n    .badge-proximo { background: #fef3c7; color: #92400e; }\n    .badge-normal { background: #dbeafe; color: #1e40af; }\n    .footer { text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; padding-top: 20px; border-top: 1px solid #e5e7eb; }\n    .button { display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; margin-top: 15px; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1 style=\"margin: 0;\">⏰ Recordatorio de Cumplimiento</h1>\n    </div>\n    <div class=\"content\">\n      <p>Estimado/a <strong>${obs.responsable_nombre}</strong>,</p>\n      \n      <div class=\"alert\">\n        <strong>⚠️ IMPORTANTE:</strong> Tienes una observación de auditoría con fecha de cumplimiento próxima.\n      </div>\n      \n      <div class=\"info-box\">\n        <h3>📋 Detalles de la Observación</h3>\n        <p><strong>Auditoría:</strong> ${obs.auditoria_nombre}</p>\n        <p><strong>Observación N°:</strong> ${obs.numero_observacion}</p>\n        <p><strong>Título:</strong> ${obs.titulo}</p>\n        <p><strong>Descripción:</strong> ${obs.descripcion}</p>\n        <p><strong>Fecha Límite:</strong> <strong style=\"color: ${colorAlerta};\">${fechaLimite}</strong></p>\n        <p><strong>Días Restantes:</strong> <span class=\"badge ${diasRestantes <= 30 ? 'badge-urgente' : diasRestantes <= 60 ? 'badge-proximo' : 'badge-normal'}\">${diasRestantes} días</span></p>\n        <p><strong>Estado Actual:</strong> ${obs.estado_observacion}</p>\n      </div>\n      \n      <p><strong>📌 Acciones Requeridas:</strong></p>\n      <ul>\n        <li>Registrar el <strong>porcentaje de avance</strong> en el sistema</li>\n        <li>Subir las <strong>evidencias</strong> correspondientes</li>\n        <li>Completar la implementación antes de la fecha límite</li>\n      </ul>\n      \n      <p style=\"text-align: center;\">\n        <a href=\"#\" class=\"button\">Acceder al Sistema</a>\n      </p>\n      \n      <p style=\"margin-top: 20px; font-size: 14px; color: #6b7280;\">\n        Este recordatorio se envía automáticamente cuando una observación tiene vencimiento en los próximos 3 meses.\n      </p>\n    </div>\n    <div class=\"footer\">\n      <p>Este es un correo automático del Sistema de Auditoría.<br>No responder a este mensaje.</p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    ...obs,\n    html_content: html,\n    subject: `⏰ Recordatorio: Observación ${obs.numero_observacion} - ${obs.auditoria_nombre} (${diasRestantes} días restantes)`\n  }\n}];"
+      },
+      "id": "code-generar-html",
+      "name": "Code - Generar HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "fromEmail": "={{ $env.GMAIL_FROM_EMAIL }}",
+        "toEmail": "={{ $json.responsable_email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html_content }}",
+        "options": {}
+      },
+      "id": "gmail-enviar",
+      "name": "Gmail - Enviar Recordatorio",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1340, 200],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-credentials",
+          "name": "Gmail OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron - Diario 9 AM": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Obtener Observaciones de Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Obtener Observaciones de Supabase": {
+      "main": [
+        [
+          {
+            "node": "Code - Parsear Respuesta Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parsear Respuesta Supabase": {
+      "main": [
+        [
+          {
+            "node": "IF - ¿Hay Observaciones?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - ¿Hay Observaciones?": {
+      "main": [
+        [
+          {
+            "node": "Code - Generar HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generar HTML": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Enviar Recordatorio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-16T00:00:00.000Z",
+  "versionId": "1"
+}
+

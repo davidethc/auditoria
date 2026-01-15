@@ -31,6 +31,7 @@ export function FormularioInformeBorrador({
   const [de, setDe] = useState('');
   const [para, setPara] = useState('');
   const [asunto, setAsunto] = useState('');
+  const [fechaInforme, setFechaInforme] = useState('');
   const [fechaInicioInforme, setFechaInicioInforme] = useState('');
   const [antecedentes, setAntecedentes] = useState('');
   const [objetivos, setObjetivos] = useState('');
@@ -48,6 +49,8 @@ export function FormularioInformeBorrador({
       setDe(informe.de || '');
       setPara(informe.para || '');
       setAsunto(informe.asunto || '');
+      // Usar fecha_inicio_informe como fecha del informe si no hay fecha específica
+      setFechaInforme(informe.fecha_inicio_informe || '');
       setFechaInicioInforme(informe.fecha_inicio_informe || '');
       setAntecedentes(informe.antecedentes || '');
       setObjetivos(informe.objetivos || '');
@@ -84,8 +87,8 @@ export function FormularioInformeBorrador({
   };
 
   const handleGuardar = async () => {
-    if (!encabezado.trim() || !de.trim() || !para.trim() || !asunto.trim()) {
-      setError('Los campos Encabezado, De, Para y Asunto son obligatorios');
+    if (!encabezado.trim() || !de.trim() || !para.trim() || !asunto.trim() || !fechaInforme || !antecedentes.trim() || !objetivos.trim() || !alcance.trim()) {
+      setError('Los campos Encabezado, De, Para, Asunto, Fecha del Informe, Antecedentes, Objetivos y Alcance son obligatorios');
       return;
     }
 
@@ -112,7 +115,7 @@ export function FormularioInformeBorrador({
         de: de.trim(),
         para: para.trim(),
         asunto: asunto.trim(),
-        fecha_inicio_informe: fechaInicioInforme || null,
+        fecha_inicio_informe: fechaInforme || fechaInicioInforme || null,
         antecedentes: antecedentes.trim() || null,
         objetivos: objetivos.trim() || null,
         alcance: alcance.trim() || null,
@@ -181,8 +184,8 @@ export function FormularioInformeBorrador({
       return;
     }
 
-    if (!encabezado.trim() || !de.trim() || !para.trim() || !asunto.trim()) {
-      setError('Los campos Encabezado, De, Para y Asunto son obligatorios');
+    if (!encabezado.trim() || !de.trim() || !para.trim() || !asunto.trim() || !fechaInforme || !antecedentes.trim() || !objetivos.trim() || !alcance.trim()) {
+      setError('Los campos Encabezado, De, Para, Asunto, Fecha del Informe, Antecedentes, Objetivos y Alcance son obligatorios');
       return;
     }
 
@@ -214,7 +217,7 @@ export function FormularioInformeBorrador({
         de: de.trim(),
         para: para.trim(),
         asunto: asunto.trim(),
-        fecha_inicio_informe: fechaInicioInforme || null,
+        fecha_inicio_informe: fechaInforme || fechaInicioInforme || null,
         antecedentes: antecedentes.trim() || null,
         objetivos: objetivos.trim() || null,
         alcance: alcance.trim() || null,
@@ -278,8 +281,85 @@ export function FormularioInformeBorrador({
         .update({ informe_borrador_generado: true, fecha_informe_borrador: new Date().toISOString() })
         .eq('id', auditoriaId);
 
+      // Actualizar observaciones incluidas en el informe con numero_informe y fecha_emision_informe
+      if (observacionesEnumeradas.length > 0) {
+        const observacionIds = observacionesEnumeradas.map(obs => obs.id).filter(Boolean);
+        const fechaActual = new Date().toISOString().split('T')[0];
+        
+        await supabase
+          .from('auditoria_observaciones')
+          .update({
+            numero_informe: encabezado.trim() || null,
+            fecha_emision_informe: fechaInforme || fechaInicioInforme || fechaActual,
+          })
+          .in('id', observacionIds);
+      }
+
+      // NOTIFICAR AL AUDITOR INTERNO que hay un informe listo para revisar
+      try {
+        const { data: auditorInternoData } = await supabase
+          .from('users')
+          .select('id, email, full_name')
+          .eq('role', 'auditor_interno')
+          .limit(1)
+          .maybeSingle();
+
+        if (auditorInternoData) {
+          const { data: auditoriaData } = await supabase
+            .from('auditorias')
+            .select('id, estado')
+            .eq('id', auditoriaId)
+            .maybeSingle();
+
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          // Crear comunicación en BD
+          await supabase
+            .from('comunicaciones_auditado')
+            .insert({
+              auditoria_id: auditoriaId,
+              destinatario_id: auditorInternoData.id,
+              tipo_comunicacion: 'NOTIFICACION',
+              asunto: `Informe de Auditoría listo para revisión - ${encabezado || 'Sin encabezado'}`,
+              mensaje: `El auditor ha enviado un informe borrador para tu revisión.\n\nAuditoría ID: ${auditoriaId}\nEncabezado: ${encabezado || 'Sin encabezado'}\nAsunto: ${asunto || 'Sin asunto'}\n\nPor favor, revisa el informe en la sección de Revisión.`,
+              metodo_envio: 'SISTEMA',
+              enviado_por: session?.user.id || null,
+              confirmado: false,
+            });
+
+          // Obtener ID del informe actualizado
+          const { data: informeActualizado } = await supabase
+            .from('auditoria_informe')
+            .select('id')
+            .eq('auditoria_id', auditoriaId)
+            .eq('es_version_actual', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          // Llamar API para notificar vía N8N
+          if (informeActualizado?.id) {
+            fetch('/api/notificar-auditor-interno-informe', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                informe_id: informeActualizado.id,
+                auditoria_id: auditoriaId,
+              }),
+            }).catch((error) => {
+              console.error('Error llamando webhook N8N (no crítico):', error);
+            });
+          }
+        }
+      } catch (notifError) {
+        console.error('Error notificando al auditor interno (no crítico):', notifError);
+        // No lanzar error, solo loguear
+      }
+
       onSuccess();
-      alert('✅ Informe enviado a revisión exitosamente');
+      alert('✅ Informe enviado a revisión exitosamente. El auditor interno ha sido notificado.');
     } catch (err) {
       console.error('Error enviando a revisión:', err);
       setError('Error al enviar el informe a revisión');
@@ -329,7 +409,7 @@ export function FormularioInformeBorrador({
                 value={de}
                 onChange={(e) => setDe(e.target.value)}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Ej: Área de Auditoría Interna"
+                placeholder="Ej: Auditoría Interna"
                 required
                 disabled={isSaving}
               />
@@ -337,15 +417,17 @@ export function FormularioInformeBorrador({
 
             <div>
               <label className="text-sm font-medium mb-2 block">Para *</label>
-              <input
-                type="text"
+              <textarea
                 value={para}
                 onChange={(e) => setPara(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Ej: Gerencia de Tecnología"
+                className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Ej:&#10;- Mgs. ____________________ — Presidente del Consejo de Administración&#10;- Abg. ____________________ — Presidente del Consejo de Vigilancia&#10;- Mgs. ____________________ — Gerente"
                 required
                 disabled={isSaving}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Lista de destinatarios (uno por línea, con nombre y cargo)
+              </p>
             </div>
           </div>
 
@@ -362,15 +444,34 @@ export function FormularioInformeBorrador({
             />
           </div>
 
-          <div>
-            <label className="text-sm font-medium mb-2 block">Fecha de Inicio del Informe</label>
-            <input
-              type="date"
-              value={fechaInicioInforme}
-              onChange={(e) => setFechaInicioInforme(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              disabled={isSaving}
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Fecha del Informe *</label>
+              <input
+                type="date"
+                value={fechaInforme}
+                onChange={(e) => setFechaInforme(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                required
+                disabled={isSaving}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Fecha de emisión del informe
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Fecha de Inicio del Período Auditado</label>
+              <input
+                type="date"
+                value={fechaInicioInforme}
+                onChange={(e) => setFechaInicioInforme(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                disabled={isSaving}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Fecha de inicio del período que se audita (opcional)
+              </p>
+            </div>
           </div>
         </div>
 
@@ -379,34 +480,37 @@ export function FormularioInformeBorrador({
           <h4 className="font-medium text-sm text-muted-foreground uppercase">Contenido</h4>
 
           <div>
-            <label className="text-sm font-medium mb-2 block">Antecedentes</label>
+            <label className="text-sm font-medium mb-2 block">Antecedentes *</label>
             <textarea
               value={antecedentes}
               onChange={(e) => setAntecedentes(e.target.value)}
-              className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-              placeholder="Describe los antecedentes de la auditoría..."
+              className="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+              placeholder="Ej: La Unidad de Auditoría Interna, en cumplimiento a las actividades establecidas en el plan anual de Auditoría Interna, procedió a revisar los controles de accesos lógico a los activos de información críticos de la institución.&#10;&#10;El trabajo se llevó a cabo conforme a las Normas de Auditoría Generalmente Aceptadas..."
+              required
               disabled={isSaving}
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium mb-2 block">Objetivos</label>
+            <label className="text-sm font-medium mb-2 block">Objetivos *</label>
             <textarea
               value={objetivos}
               onChange={(e) => setObjetivos(e.target.value)}
               className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-              placeholder="Describe los objetivos de la auditoría..."
+              placeholder="Ej: Verificar que existan controles de acceso lógico que aseguren que el acceso a sistemas, datos y programas esté restringido a usuarios autorizados."
+              required
               disabled={isSaving}
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium mb-2 block">Alcance</label>
+            <label className="text-sm font-medium mb-2 block">Alcance *</label>
             <textarea
               value={alcance}
               onChange={(e) => setAlcance(e.target.value)}
               className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-              placeholder="Describe el alcance de la auditoría..."
+              placeholder="Ej: El alcance incluye las operaciones relacionadas por la cooperativa con corte a julio del 2025."
+              required
               disabled={isSaving}
             />
           </div>
@@ -416,10 +520,13 @@ export function FormularioInformeBorrador({
             <textarea
               value={resultadosRevision}
               onChange={(e) => setResultadosRevision(e.target.value)}
-              className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-              placeholder="Describe los resultados de la revisión realizada..."
+              className="w-full min-h-[150px] rounded-md border border-input bg-background px-3 py-2 text-sm font-mono text-xs"
+              placeholder="Puedes organizar los resultados en secciones numeradas:&#10;&#10;## 1. Título de la Sección&#10;&#10;### OBSERVACIÓN N° 1&#10;Descripción de la observación...&#10;&#10;### RECOMENDACIÓN N° 1&#10;Descripción de la recomendación...&#10;&#10;## 2. Otra Sección&#10;..."
               disabled={isSaving}
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Puedes organizar los resultados en secciones numeradas. Las observaciones seleccionadas se incluirán automáticamente.
+            </p>
           </div>
 
           <div>

@@ -1,0 +1,340 @@
+{
+  "name": "Recordatorios Fin de Mes - Solicitar Avance (Mejorado)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 28-31 * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Cron - Últimos Días del Mes 9 AM",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verificar si es el último día hábil del mes\nconst hoy = new Date();\nconst ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);\nconst diaSemana = ultimoDia.getDay(); // 0=Domingo, 6=Sábado\n\n// Si es fin de semana, retroceder al viernes anterior\nlet ultimoDiaHabil = ultimoDia;\nif (diaSemana === 0) { // Domingo\n  ultimoDiaHabil = new Date(ultimoDia.getTime() - 2 * 24 * 60 * 60 * 1000);\n} else if (diaSemana === 6) { // Sábado\n  ultimoDiaHabil = new Date(ultimoDia.getTime() - 1 * 24 * 60 * 60 * 1000);\n}\n\n// Verificar si hoy es el último día hábil\nconst hoyStr = hoy.toISOString().split('T')[0];\nconst ultimoDiaHabilStr = ultimoDiaHabil.toISOString().split('T')[0];\n\nif (hoyStr !== ultimoDiaHabilStr) {\n  // No es el último día hábil, no ejecutar\n  return [];\n}\n\nreturn [{\n  json: {\n    es_ultimo_dia_habil: true,\n    fecha: hoyStr,\n    fecha_ultimo_dia: ultimoDiaHabilStr,\n    mes: hoy.getMonth() + 1,\n    año: hoy.getFullYear(),\n    nombre_mes: hoy.toLocaleDateString('es-ES', { month: 'long' })\n  }\n}];"
+      },
+      "id": "code-verificar-ultimo-dia",
+      "name": "Code - Verificar Último Día Hábil",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-es-ultimo-dia",
+              "leftValue": "={{ $json.es_ultimo_dia_habil }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-es-ultimo-dia",
+      "name": "IF - ¿Es Último Día Hábil?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://ksnehijfwxtfbspqvdwq.supabase.co/rest/v1/auditoria_observaciones?select=id,auditoria_id,numero_observacion,titulo_observacion,descripcion_observacion,fecha_fin,nueva_fecha_implementacion,estado_observacion,porcentaje_avance,responsable_implementacion,auditoria:auditorias(id,nombre,estado),responsable_implementacion_user:users!auditoria_observaciones_responsable_implementacion_fkey(id,full_name,email)&or=(fecha_fin.eq.{{ $json.fecha }},nueva_fecha_implementacion.eq.{{ $json.fecha }})&estado_observacion=in.(EN_PROCESO,NO_INICIADA)&fecha_real_implementacion=is.null",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-consultar-observaciones",
+      "name": "HTTP Request - Obtener Observaciones de Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parsear respuesta de Supabase\nconst respuesta = $input.item.json;\n\n// Si es array, usar directamente; si es objeto, convertirlo a array\nlet observaciones = Array.isArray(respuesta) ? respuesta : [respuesta];\n\n// Filtrar observaciones válidas (con email y responsable)\nobservaciones = observaciones.filter(obs => \n  obs.responsable_implementacion_user && \n  obs.responsable_implementacion_user.email &&\n  obs.responsable_implementacion\n);\n\nif (observaciones.length === 0) {\n  return [];\n}\n\n// Preparar datos y determinar si es fecha final\nconst fechaHoy = new Date();\nfechaHoy.setHours(0, 0, 0, 0);\n\nreturn observaciones.map(obs => {\n  // Usar nueva_fecha_implementacion si existe, sino fecha_fin\n  const fechaReferencia = obs.nueva_fecha_implementacion || obs.fecha_fin;\n  const fechaFin = new Date(fechaReferencia);\n  fechaFin.setHours(0, 0, 0, 0);\n  \n  // Es fecha final si fecha de referencia es hoy (último día del mes)\n  const esFechaFinal = fechaFin.getTime() === fechaHoy.getTime();\n  \n  return {\n    json: {\n      observacion_id: obs.id,\n      auditoria_id: obs.auditoria_id,\n      numero_observacion: obs.numero_observacion || 0,\n      titulo: obs.titulo_observacion || 'Sin título',\n      descripcion: obs.descripcion_observacion || 'Sin descripción',\n      fecha_fin: fechaReferencia,\n      es_fecha_final: esFechaFinal,\n      responsable_id: obs.responsable_implementacion,\n      responsable_nombre: obs.responsable_implementacion_user?.full_name || 'Responsable',\n      responsable_email: obs.responsable_implementacion_user?.email || '',\n      auditoria_nombre: obs.auditoria?.nombre || 'Auditoría',\n      auditoria_estado: obs.auditoria?.estado || 'EN_PROCESO',\n      porcentaje_avance: obs.porcentaje_avance || 0,\n      estado_observacion: obs.estado_observacion || 'EN_PROCESO'\n    }\n  };\n});"
+      },
+      "id": "code-preparar-datos",
+      "name": "Code - Preparar Datos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-tiene-observaciones",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-tiene-observaciones",
+      "name": "IF - ¿Hay Observaciones?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-es-fecha-final",
+              "leftValue": "={{ $json.es_fecha_final }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-es-fecha-final",
+      "name": "IF - ¿Es Fecha Final?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generar HTML para NO fecha final (solicitar avance)\nconst obs = $json;\nconst fechaLimite = obs.fecha_fin ? new Date(obs.fecha_fin).toLocaleDateString('es-ES', {\n  year: 'numeric',\n  month: 'long',\n  day: 'numeric'\n}) : 'No definida';\n\nconst html = `\n<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #f9fafb; }\n    .header { background: #2563eb; color: white; padding: 20px; border-radius: 8px 8px 0 0; text-align: center; }\n    .content { background: white; padding: 20px; border-radius: 0 0 8px 8px; }\n    .info-box { background: #f9fafb; padding: 15px; margin: 15px 0; border-radius: 4px; border-left: 4px solid #2563eb; }\n    .info-box h3 { margin-top: 0; color: #1f2937; }\n    .info-box p { margin: 8px 0; }\n    .badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; background: #dbeafe; color: #1e40af; }\n    .footer { text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; padding-top: 20px; border-top: 1px solid #e5e7eb; }\n    .button { display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; margin-top: 15px; }\n    ul { padding-left: 20px; }\n    li { margin: 8px 0; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1 style=\"margin: 0;\">📊 Solicitud de Avance Mensual</h1>\n    </div>\n    <div class=\"content\">\n      <p>Estimado/a <strong>${obs.responsable_nombre}</strong>,</p>\n      \n      <div class=\"info-box\">\n        <h3>📋 Información de la Observación</h3>\n        <p><strong>Auditoría:</strong> ${obs.auditoria_nombre}</p>\n        <p><strong>Observación N°:</strong> ${obs.numero_observacion}</p>\n        <p><strong>Título:</strong> ${obs.titulo}</p>\n        <p><strong>Descripción:</strong> ${obs.descripcion}</p>\n        <p><strong>Fecha Límite:</strong> ${fechaLimite}</p>\n        <p><strong>Avance Actual:</strong> <span class=\"badge\">${obs.porcentaje_avance}%</span></p>\n        <p><strong>Estado:</strong> ${obs.estado_observacion}</p>\n      </div>\n      \n      <p><strong>📌 Se solicita:</strong></p>\n      <ul>\n        <li>Registrar el <strong>porcentaje de avance</strong> del cumplimiento en el sistema</li>\n        <li>Subir las <strong>evidencias</strong> correspondientes al avance reportado</li>\n        <li>Actualizar el estado de la observación si corresponde</li>\n      </ul>\n      \n      <p style=\"text-align: center;\">\n        <a href=\"#\" class=\"button\">Acceder al Sistema</a>\n      </p>\n      \n      <p style=\"margin-top: 20px; font-size: 14px; color: #6b7280;\">\n        Este recordatorio se envía automáticamente el último día hábil de cada mes para observaciones con fecha de cumplimiento en fin de mes.\n      </p>\n    </div>\n    <div class=\"footer\">\n      <p>Este es un correo automático del Sistema de Auditoría.<br>No responder a este mensaje.</p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    ...obs,\n    html_content: html,\n    subject: `📊 Solicitud de Avance: Observación ${obs.numero_observacion} - ${obs.auditoria_nombre}`\n  }\n}];"
+      },
+      "id": "code-generar-html-avance",
+      "name": "Code - Generar HTML (Avance)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generar HTML para fecha final (solicitar evidencias legalizadas)\nconst obs = $json;\nconst fechaLimite = obs.fecha_fin ? new Date(obs.fecha_fin).toLocaleDateString('es-ES', {\n  year: 'numeric',\n  month: 'long',\n  day: 'numeric'\n}) : 'No definida';\n\nconst html = `\n<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #f9fafb; }\n    .header { background: #dc2626; color: white; padding: 20px; border-radius: 8px 8px 0 0; text-align: center; }\n    .content { background: white; padding: 20px; border-radius: 0 0 8px 8px; }\n    .alert { background: #fee2e2; border-left: 4px solid #dc2626; padding: 15px; margin: 15px 0; border-radius: 4px; }\n    .info-box { background: #f9fafb; padding: 15px; margin: 15px 0; border-radius: 4px; border: 1px solid #e5e7eb; }\n    .info-box h3 { margin-top: 0; color: #1f2937; }\n    .info-box p { margin: 8px 0; }\n    .footer { text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; padding-top: 20px; border-top: 1px solid #e5e7eb; }\n    .button { display: inline-block; padding: 12px 24px; background: #dc2626; color: white; text-decoration: none; border-radius: 6px; margin-top: 15px; }\n    ul { padding-left: 20px; }\n    li { margin: 8px 0; font-weight: 500; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1 style=\"margin: 0;\">⚠️ FECHA FINAL DE CUMPLIMIENTO</h1>\n    </div>\n    <div class=\"content\">\n      <p>Estimado/a <strong>${obs.responsable_nombre}</strong>,</p>\n      \n      <div class=\"alert\">\n        <strong>⚠️ IMPORTANTE:</strong> Hoy es la fecha final de cumplimiento de esta observación.\n      </div>\n      \n      <div class=\"info-box\">\n        <h3>📋 Información de la Observación</h3>\n        <p><strong>Auditoría:</strong> ${obs.auditoria_nombre}</p>\n        <p><strong>Observación N°:</strong> ${obs.numero_observacion}</p>\n        <p><strong>Título:</strong> ${obs.titulo}</p>\n        <p><strong>Descripción:</strong> ${obs.descripcion}</p>\n        <p><strong>Fecha Límite:</strong> <strong style=\"color: #dc2626;\">${fechaLimite}</strong></p>\n        <p><strong>Avance Actual:</strong> ${obs.porcentaje_avance}%</p>\n        <p><strong>Estado:</strong> ${obs.estado_observacion}</p>\n      </div>\n      \n      <p><strong>📌 Se solicita URGENTEMENTE:</strong></p>\n      <ul>\n        <li>Las <strong>evidencias</strong> de los planes de acción ejecutados</li>\n        <li>La <strong>documentación legalizada por Gerencia</strong></li>\n        <li>El <strong>porcentaje final de avance</strong> (debe ser 100%)</li>\n        <li>La actualización del estado a <strong>COMPLETADA</strong> si corresponde</li>\n      </ul>\n      \n      <p style=\"text-align: center;\">\n        <a href=\"#\" class=\"button\">Acceder al Sistema</a>\n      </p>\n      \n      <p style=\"margin-top: 20px; font-size: 14px; color: #dc2626; font-weight: bold;\">\n        ⚠️ Por favor, asegúrate de enviar toda la documentación requerida antes del cierre del día.\n      </p>\n    </div>\n    <div class=\"footer\">\n      <p>Este es un correo automático del Sistema de Auditoría.<br>No responder a este mensaje.</p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    ...obs,\n    html_content: html,\n    subject: `⚠️ FECHA FINAL: Observación ${obs.numero_observacion} - ${obs.auditoria_nombre}`\n  }\n}];"
+      },
+      "id": "code-generar-html-final",
+      "name": "Code - Generar HTML (Fecha Final)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "fromEmail": "={{ $env.GMAIL_FROM_EMAIL }}",
+        "toEmail": "={{ $json.responsable_email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html_content }}",
+        "options": {}
+      },
+      "id": "gmail-enviar-avance",
+      "name": "Gmail - Enviar (Avance)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2000, 100],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-credentials",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "fromEmail": "={{ $env.GMAIL_FROM_EMAIL }}",
+        "toEmail": "={{ $json.responsable_email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html_content }}",
+        "options": {}
+      },
+      "id": "gmail-enviar-final",
+      "name": "Gmail - Enviar (Fecha Final)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2000, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-credentials",
+          "name": "Gmail OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron - Últimos Días del Mes 9 AM": {
+      "main": [
+        [
+          {
+            "node": "Code - Verificar Último Día Hábil",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Verificar Último Día Hábil": {
+      "main": [
+        [
+          {
+            "node": "IF - ¿Es Último Día Hábil?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - ¿Es Último Día Hábil?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Obtener Observaciones de Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Obtener Observaciones de Supabase": {
+      "main": [
+        [
+          {
+            "node": "Code - Preparar Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Preparar Datos": {
+      "main": [
+        [
+          {
+            "node": "IF - ¿Hay Observaciones?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - ¿Hay Observaciones?": {
+      "main": [
+        [
+          {
+            "node": "IF - ¿Es Fecha Final?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - ¿Es Fecha Final?": {
+      "main": [
+        [
+          {
+            "node": "Code - Generar HTML (Fecha Final)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Generar HTML (Avance)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generar HTML (Avance)": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Enviar (Avance)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generar HTML (Fecha Final)": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Enviar (Fecha Final)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-16T00:00:00.000Z",
+  "versionId": "1"
+}
+

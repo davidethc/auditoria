@@ -13,10 +13,15 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  X
+  X,
+  MessageSquare,
+  Download,
+  TrendingUp
 } from 'lucide-react';
 import type { AuditoriaObservacion } from '@/types/auditorias';
 import { formatearFecha } from '@/utils/auditoriaHelpers';
+import { SolicitarCorreccionObservacion } from './SolicitarCorreccionObservacion';
+import { ReporteAvanceMensual } from './ReporteAvanceMensual';
 
 interface MatrizObservacionesProps {
   auditoriaId: string;
@@ -24,12 +29,19 @@ interface MatrizObservacionesProps {
   onObservacionEdit?: (observacion: AuditoriaObservacion) => void;
   readOnly?: boolean;
   currentUserId?: string;
+  userRole?: string;
 }
 
 const estadoConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: any }> = {
   NO_INICIADA: { label: 'No Iniciada', variant: 'outline', icon: Clock },
   EN_PROCESO: { label: 'En Proceso', variant: 'secondary', icon: AlertCircle },
+  EN_VALIDACION: { label: 'En Validación', variant: 'secondary', icon: AlertCircle },
   COMPLETADA: { label: 'Completada', variant: 'default', icon: CheckCircle2 },
+  REABIERTA: { label: 'Reabierta', variant: 'destructive', icon: AlertCircle },
+  REPROGRAMADA: { label: 'Reprogramada (1ra)', variant: 'outline', icon: Clock },
+  REPROGRAMADA_2DA: { label: 'Reprogramada (2da)', variant: 'outline', icon: Clock },
+  CUMPLIDA_CON_REPROGRAMACION: { label: 'Cumplida con Reprogramación', variant: 'default', icon: CheckCircle2 },
+  REPROGRAMADA_VENCIDA: { label: 'Reprogramada - Vencida', variant: 'destructive', icon: X },
   VENCIDA: { label: 'Vencida', variant: 'destructive', icon: X },
   CANCELADA: { label: 'Cancelada', variant: 'outline', icon: X },
 };
@@ -40,10 +52,14 @@ export function MatrizObservaciones({
   onObservacionEdit,
   readOnly = false,
   currentUserId,
+  userRole,
 }: MatrizObservacionesProps) {
   const [observaciones, setObservaciones] = useState<AuditoriaObservacion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [observacionSolicitarCorreccion, setObservacionSolicitarCorreccion] = useState<AuditoriaObservacion | null>(null);
+  const [observacionReporteAvance, setObservacionReporteAvance] = useState<AuditoriaObservacion | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     loadObservaciones();
@@ -97,6 +113,29 @@ export function MatrizObservaciones({
     }
   };
 
+  const handleExportarExcel = async () => {
+    setIsExporting(true);
+    try {
+      const response = await fetch(`/api/exportar-matriz-excel?auditoria_id=${auditoriaId}`);
+      if (!response.ok) throw new Error('Error al exportar');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `matriz-observaciones-${auditoriaId}-${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error exportando Excel:', error);
+      alert('Error al exportar matriz a Excel');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -124,16 +163,39 @@ export function MatrizObservaciones({
             {observaciones.length} observación{observaciones.length !== 1 ? 'es' : ''} registrada{observaciones.length !== 1 ? 's' : ''}
           </p>
         </div>
-        {!readOnly && (
-          <Button
-            onClick={() => onObservacionEdit?.(null as any)}
-            className="gap-2"
-            size="sm"
-          >
-            <Plus className="h-4 w-4" />
-            Nueva Observación
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {observaciones.length > 0 && (
+            <Button
+              onClick={handleExportarExcel}
+              disabled={isExporting}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              {isExporting ? (
+                <>
+                  <Loader variant="cube" size={14} />
+                  Exportando...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4" />
+                  Exportar Excel
+                </>
+              )}
+            </Button>
+          )}
+          {!readOnly && (
+            <Button
+              onClick={() => onObservacionEdit?.(null as any)}
+              className="gap-2"
+              size="sm"
+            >
+              <Plus className="h-4 w-4" />
+              Nueva Observación
+            </Button>
+          )}
+        </div>
       </div>
 
       {observaciones.length === 0 ? (
@@ -243,13 +305,35 @@ export function MatrizObservaciones({
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onObservacionEdit?.(observacion)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
+                            {(userRole === 'auditor' || userRole === 'auditor_interno') && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onObservacionEdit?.(observacion)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {userRole === 'auditado' && observacion.responsable_implementacion === currentUserId && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setObservacionReporteAvance(observacion)}
+                                  title="Reportar avance mensual"
+                                >
+                                  <TrendingUp className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setObservacionSolicitarCorreccion(observacion)}
+                                  title="Solicitar corrección o modificación al auditor"
+                                >
+                                  <MessageSquare className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </td>
                       )}
@@ -258,6 +342,42 @@ export function MatrizObservaciones({
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para solicitar corrección */}
+      {observacionSolicitarCorreccion && currentUserId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <SolicitarCorreccionObservacion
+              observacion={observacionSolicitarCorreccion}
+              auditoriaId={auditoriaId}
+              currentUserId={currentUserId}
+              onSuccess={() => {
+                setObservacionSolicitarCorreccion(null);
+                loadObservaciones();
+              }}
+              onCancel={() => setObservacionSolicitarCorreccion(null)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Modal para reporte de avance mensual */}
+      {observacionReporteAvance && currentUserId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <ReporteAvanceMensual
+              observacion={observacionReporteAvance}
+              auditoriaId={auditoriaId}
+              currentUserId={currentUserId}
+              onSuccess={() => {
+                setObservacionReporteAvance(null);
+                loadObservaciones();
+              }}
+              onCancel={() => setObservacionReporteAvance(null)}
+            />
           </div>
         </div>
       )}

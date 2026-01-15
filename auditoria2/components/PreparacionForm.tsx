@@ -88,6 +88,20 @@ export function PreparacionForm({
         if (insertError) throw insertError;
       }
 
+      // Actualizar auditoría: marcar preparación como completada
+      const { error: auditoriaError } = await supabase
+        .from('auditorias')
+        .update({
+          preparacion_completada: true,
+          fecha_preparacion_completada: new Date().toISOString(),
+        })
+        .eq('id', auditoriaId);
+
+      if (auditoriaError) {
+        console.error('Error actualizando auditoría:', auditoriaError);
+        // No lanzar error, solo loguear - la preparación ya se guardó
+      }
+
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
       onSuccess();

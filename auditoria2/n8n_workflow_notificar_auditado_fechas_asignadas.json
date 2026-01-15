@@ -1,0 +1,121 @@
+{
+  "name": "Notificar Auditado - Confirmación Fechas Asignadas",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "notificar-auditado-fechas-asignadas",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-001",
+      "name": "Webhook - Recibir Solicitud",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "notificar-auditado-fechas-asignadas"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Notificación recibida\", \"observacion_id\": $json.body.observacion_id } }}"
+      },
+      "id": "respond-001",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validar y extraer datos recibidos del webhook\nconst body = $input.item.json.body || $input.item.json;\n\n// Validar campos obligatorios\nif (!body.observacion_id) {\n  throw new Error('Falta observacion_id en el request');\n}\n\nif (!body.auditado_email) {\n  throw new Error('Falta auditado_email en el request');\n}\n\nif (!body.fecha_inicio || !body.fecha_fin) {\n  throw new Error('Faltan fecha_inicio o fecha_fin en el request');\n}\n\n// Preparar datos para el correo\nconst data = {\n  observacion_id: body.observacion_id,\n  auditoria_id: body.auditoria_id,\n  auditado_id: body.auditado_id || null,\n  auditado_email: body.auditado_email,\n  auditado_nombre: body.auditado_nombre || body.auditado_email.split('@')[0],\n  observacion_numero: body.observacion_numero || 'N/A',\n  observacion_titulo: body.observacion_titulo || 'Sin título',\n  observacion_descripcion: body.observacion_descripcion || 'Sin descripción',\n  fecha_inicio: body.fecha_inicio,\n  fecha_fin: body.fecha_fin,\n  estrategia: body.estrategia || null,\n  entregable: body.entregable || null,\n  timestamp: body.timestamp || new Date().toISOString()\n};\n\nreturn [{\n  json: {\n    ...data,\n    subject: `✅ Confirmación - Fechas de Implementación Asignadas - Observación #${data.observacion_numero}`\n  }\n}];"
+      },
+      "id": "code-001",
+      "name": "Code - Validar y Preparar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generar HTML del correo de confirmación para el auditado\nconst data = $input.item.json;\n\nconst fechaInicioFormateada = new Date(data.fecha_inicio).toLocaleDateString('es-ES', { \n  year: 'numeric', \n  month: 'long', \n  day: 'numeric'\n});\n\nconst fechaFinFormateada = new Date(data.fecha_fin).toLocaleDateString('es-ES', { \n  year: 'numeric', \n  month: 'long', \n  day: 'numeric'\n});\n\nconst diasDiferencia = Math.ceil((new Date(data.fecha_fin) - new Date(data.fecha_inicio)) / (1000 * 60 * 60 * 24));\n\nconst htmlTemplate = `<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body { \n      font-family: Arial, sans-serif; \n      line-height: 1.6; \n      color: #333; \n      background: #f3f4f6;\n      margin: 0;\n      padding: 0;\n    }\n    .container { \n      max-width: 600px; \n      margin: 20px auto; \n      padding: 0;\n      background: white;\n      border-radius: 8px;\n      box-shadow: 0 2px 4px rgba(0,0,0,0.1);\n    }\n    .header { \n      background: #059669; \n      color: white; \n      padding: 30px 20px; \n      border-radius: 8px 8px 0 0; \n      text-align: center;\n    }\n    .header h1 {\n      margin: 0 0 10px 0;\n      font-size: 24px;\n    }\n    .content { \n      padding: 30px 20px; \n      background: white;\n    }\n    .observation-box {\n      background: #f9fafb;\n      padding: 20px;\n      border-radius: 8px;\n      border-left: 4px solid #059669;\n      margin: 20px 0;\n    }\n    .observation-box h3 {\n      margin: 0 0 10px 0;\n      color: #059669;\n      font-size: 18px;\n    }\n    .dates-box {\n      background: #ecfdf5;\n      padding: 20px;\n      border-radius: 8px;\n      margin: 20px 0;\n      border: 2px solid #059669;\n    }\n    .date-item {\n      display: flex;\n      justify-content: space-between;\n      align-items: center;\n      padding: 12px 0;\n      border-bottom: 1px solid #d1fae5;\n    }\n    .date-item:last-child {\n      border-bottom: none;\n    }\n    .date-label {\n      font-weight: bold;\n      color: #065f46;\n    }\n    .date-value {\n      font-size: 16px;\n      color: #059669;\n      font-weight: bold;\n    }\n    .button {\n      display: inline-block;\n      padding: 12px 24px;\n      background: #059669;\n      color: white;\n      text-decoration: none;\n      border-radius: 6px;\n      margin: 20px 0;\n      font-weight: bold;\n    }\n    .footer { \n      text-align: center; \n      padding: 20px; \n      color: #6b7280; \n      font-size: 12px; \n      background: #f9fafb;\n      border-radius: 0 0 8px 8px;\n    }\n    .confirmation-box {\n      background: #d1fae5;\n      padding: 15px;\n      border-radius: 8px;\n      margin: 20px 0;\n      border-left: 4px solid #059669;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>✅ Confirmación - Fechas Asignadas</h1>\n      <p style=\"margin: 0; opacity: 0.9;\">Sistema de Auditoría Interna</p>\n    </div>\n\n    <div class=\"content\">\n      <p>\n        Hola <strong>${data.auditado_nombre}</strong>,\n      </p>\n\n      <div class=\"confirmation-box\">\n        <p style=\"margin: 0; font-size: 16px; color: #065f46; font-weight: bold;\">\n          ✅ Has asignado exitosamente las fechas de implementación para la siguiente observación:\n        </p>\n      </div>\n\n      <div class=\"observation-box\">\n        <h3>Observación #${data.observacion_numero}</h3>\n        <p style=\"margin-top: 10px; font-size: 15px; font-weight: bold;\">\n          ${String(data.observacion_titulo || 'Sin título').replace(/</g, '&lt;').replace(/>/g, '&gt;')}\n        </p>\n        <p style=\"margin-top: 10px; font-size: 14px; color: #6b7280;\">\n          ${String(data.observacion_descripcion || 'Sin descripción').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br>')}\n        </p>\n      </div>\n\n      <div class=\"dates-box\">\n        <h3 style=\"margin: 0 0 15px 0; color: #065f46; font-size: 18px;\">📅 Fechas de Implementación Asignadas</h3>\n        <div class=\"date-item\">\n          <span class=\"date-label\">Fecha de Inicio:</span>\n          <span class=\"date-value\">${fechaInicioFormateada}</span>\n        </div>\n        <div class=\"date-item\">\n          <span class=\"date-label\">Fecha de Fin:</span>\n          <span class=\"date-value\">${fechaFinFormateada}</span>\n        </div>\n        <div class=\"date-item\">\n          <span class=\"date-label\">Duración Total:</span>\n          <span class=\"date-value\">${diasDiferencia} días</span>\n        </div>\n      </div>\n\n      ${data.estrategia ? `<div class=\"observation-box\" style=\"background: #eff6ff; border-left-color: #2563eb;\">\n        <h3 style=\"color: #2563eb;\">📋 Estrategia de Implementación</h3>\n        <p style=\"margin-top: 10px; font-size: 14px;\">\n          ${String(data.estrategia).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br>')}\n        </p>\n      </div>` : ''}\n\n      ${data.entregable ? `<div class=\"observation-box\" style=\"background: #fef3c7; border-left-color: #f59e0b;\">\n        <h3 style=\"color: #92400e;\">📦 Entregable</h3>\n        <p style=\"margin-top: 10px; font-size: 14px;\">\n          ${String(data.entregable).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br>')}\n        </p>\n      </div>` : ''}\n\n      <div style=\"text-align: center; margin: 30px 0; padding: 15px; background: #ecfdf5; border-radius: 8px;\">\n        <p style=\"margin: 0; font-size: 16px; color: #065f46;\">\n          <strong>📋 Recordatorio:</strong>\n        </p>\n        <p style=\"margin: 10px 0 0 0; font-size: 14px; color: #6b7280;\">\n          Debes reportar avances mensualmente, incluso si la fecha final no ha llegado. También puedes reportar avances en cualquier momento desde el sistema.\n        </p>\n      </div>\n\n      <div style=\"text-align: center; margin: 30px 0;\">\n        <a href=\"http://localhost:3000/auditorias/${data.auditoria_id}/ejecucion\" class=\"button\">\n          Ver Observación en el Sistema\n        </a>\n      </div>\n\n      <p style=\"margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 13px;\">\n        <strong>Nota:</strong> Este es un correo de confirmación automático del Sistema de Auditoría Interna.<br>\n        Las fechas que has asignado han sido registradas correctamente. El auditor responsable ha sido notificado.<br>\n        No responder a este mensaje.\n      </p>\n    </div>\n\n    <div class=\"footer\">\n      <p>\n        Sistema de Auditoría Interna<br>\n        Generado el ${new Date(data.timestamp).toLocaleDateString('es-ES', { \n          year: 'numeric', \n          month: 'long', \n          day: 'numeric',\n          hour: '2-digit',\n          minute: '2-digit'\n        })}<br>\n        © ${new Date().getFullYear()}\n      </p>\n    </div>\n  </div>\n</body>\n</html>`;\n\nreturn [{\n  json: {\n    ...data,\n    html: htmlTemplate\n  }\n}];"
+      },
+      "id": "code-002",
+      "name": "Code - Generar HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toEmail": "={{ $json.auditado_email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "gmail-001",
+      "name": "Gmail - Enviar Correo",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Recibir Solicitud": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code - Validar y Preparar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validar y Preparar": {
+      "main": [
+        [
+          {
+            "node": "Code - Generar HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generar HTML": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Enviar Correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-08T00:00:00.000Z",
+  "versionId": "1"
+}

@@ -1,0 +1,435 @@
+{
+  "name": "Notificar Auditados - Envío de Correos y Solicitudes",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "notificar-auditados",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook - Recibir Notificación",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "notificar-auditados"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Notificación recibida\", \"auditoria_id\": $json.body.auditoria_id } }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validar y preparar datos recibidos del webhook\nconst body = $input.item.json.body || $input.item.json;\n\n// Validar que tenga los datos necesarios\nif (!body.auditoria_id) {\n  throw new Error('Falta auditoria_id en el request');\n}\n\n// Si viene con datos completos del sistema, usarlos\n// Si solo viene auditoria_id, necesitaremos consultar la DB después\nconst data = {\n  auditoria_id: body.auditoria_id,\n  preparacion: body.preparacion || null,\n  actividad: body.actividad || null,\n  fechas: body.fechas || null,\n  auditados: body.auditados || [],\n  comunicaciones_ids: body.comunicaciones_ids || []\n};\n\n// Si faltan datos, marcar para consultar DB\nconst necesitaConsultaDB = !data.preparacion || !data.actividad || data.auditados.length === 0;\n\nreturn [{\n  json: {\n    auditoria_id: data.auditoria_id,\n    preparacion: data.preparacion,\n    actividad: data.actividad,\n    fechas: data.fechas,\n    auditados: data.auditados,\n    comunicaciones_ids: data.comunicaciones_ids,\n    necesita_consulta_db: necesitaConsultaDB\n  }\n}];"
+      },
+      "id": "code-validar",
+      "name": "Code - Validar y Preparar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.necesita_consulta_db }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-consulta-db",
+      "name": "IF - ¿Necesita consultar DB?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ksnehijfwxtfbspqvdwq.supabase.co/rest/v1/rpc/get_notificacion_auditados_data",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "p_auditoria_id",
+              "value": "={{ $json.auditoria_id }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-consulta-db",
+      "name": "HTTP Request - Consultar DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parsear respuesta de DB si fue necesario consultarla\n// O usar datos que ya venían del webhook\nconst inputData = $input.item.json;\n\nlet datosCompletos;\n\n// Si se consultó DB, parsear la respuesta\nif (inputData.resultado || inputData.auditoria) {\n  const dbData = inputData.resultado || inputData;\n  datosCompletos = {\n    auditoria: dbData.auditoria,\n    preparacion: dbData.preparacion,\n    actividad: dbData.actividad,\n    auditor_responsable: dbData.auditor_responsable,\n    auditados: dbData.auditados || []\n  };\n} else {\n  // Usar datos que ya venían del webhook\n  // IMPORTANTE: Si los auditados no tienen email/nombre, necesitamos consultarlos\n  // Por ahora, asumimos que vienen del webhook o se consultaron antes\n  datosCompletos = {\n    auditoria: {\n      id: inputData.auditoria_id,\n      fecha_inicio: inputData.fechas?.inicio,\n      fecha_fin: inputData.fechas?.fin\n    },\n    preparacion: inputData.preparacion,\n    actividad: inputData.actividad,\n    auditor_responsable: inputData.auditor_responsable || null,\n    auditados: inputData.auditados.map(a => ({\n      user_id: a.user_id,\n      email: a.email || null,\n      nombre: a.nombre || null,\n      comunicacion_id: a.comunicacion_id || null\n    }))\n  };\n  \n  // Si los auditados no tienen email/nombre, necesitamos consultar DB\n  const auditadosSinEmail = datosCompletos.auditados.filter(a => !a.email || !a.nombre);\n  if (auditadosSinEmail.length > 0 && !inputData.auditados_completos) {\n    // Marcar que necesitamos consultar emails\n    datosCompletos.necesita_emails = true;\n  }\n}\n\n// Validar que tengamos datos mínimos\nif (!datosCompletos.preparacion || !datosCompletos.actividad || datosCompletos.auditados.length === 0) {\n  throw new Error('Faltan datos necesarios para enviar notificación');\n}\n\n// Asegurar que todos los auditados tengan email y nombre\n// Si faltan, los obtenemos de la función SQL que ya los incluye\n// O los consultamos aquí si es necesario\n\nreturn [{\n  json: datosCompletos\n}];"
+      },
+      "id": "code-preparar-datos",
+      "name": "Code - Preparar Datos Completos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Duplicar datos generales en cada auditado antes del split\nconst item = $input.item.json;\n\n// Validar que tengamos los datos necesarios\nif (!item.auditados || !Array.isArray(item.auditados) || item.auditados.length === 0) {\n  throw new Error('No hay auditados para procesar');\n}\n\n// Crear un item por cada auditado con todos los datos generales incluidos\n// Cada item tendrá: auditado (individual) + datos generales\nreturn item.auditados.map(auditado => ({\n  json: {\n    auditado: auditado,\n    auditoria: item.auditoria,\n    preparacion: item.preparacion,\n    actividad: item.actividad,\n    auditor_responsable: item.auditor_responsable || null\n  }\n}));"
+      },
+      "id": "code-duplicar-datos",
+      "name": "Code - Duplicar Datos por Auditado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Obtener datos del item actual (ya viene con todos los datos duplicados)\n// Después del nodo 'Code - Duplicar Datos', cada item tiene:\n// { auditado: {...}, auditoria: {...}, preparacion: {...}, actividad: {...} }\nconst item = $input.item.json;\n\n// Extraer datos del item (todos están disponibles directamente)\nconst auditado = item.auditado;\nconst preparacion = item.preparacion;\nconst actividad = item.actividad;\nconst auditoria = item.auditoria;\nconst auditor = item.auditor_responsable || {};\n\n// Formatear fecha de inicio\nconst fechaInicio = auditoria.fecha_inicio \n  ? new Date(auditoria.fecha_inicio).toLocaleDateString('es-ES', { \n      year: 'numeric', \n      month: 'long', \n      day: 'numeric' \n    })\n  : 'No definida';\n\n// Calcular fecha límite para documentación (8 días hábiles desde hoy)\nconst hoy = new Date();\nlet diasAgregados = 0;\nlet diasHabiles = 0;\n\nwhile (diasHabiles < 8) {\n  diasAgregados++;\n  const fecha = new Date(hoy);\n  fecha.setDate(fecha.getDate() + diasAgregados);\n  const diaSemana = fecha.getDay();\n  // Excluir sábados (6) y domingos (0)\n  if (diaSemana !== 0 && diaSemana !== 6) {\n    diasHabiles++;\n  }\n}\n\nconst fechaLimiteDoc = new Date(hoy);\nfechaLimiteDoc.setDate(fechaLimiteDoc.getDate() + diasAgregados);\nconst fechaLimiteFormateada = fechaLimiteDoc.toLocaleDateString('es-ES', {\n  year: 'numeric',\n  month: 'long',\n  day: 'numeric'\n});\n\n// Generar HTML del correo\nconst htmlTemplate = `\n<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body { \n      font-family: Arial, sans-serif; \n      line-height: 1.6; \n      color: #333; \n      background: #f3f4f6;\n      margin: 0;\n      padding: 0;\n    }\n    .container { \n      max-width: 600px; \n      margin: 0 auto; \n      padding: 20px; \n    }\n    .header { \n      background: #2563eb; \n      color: white; \n      padding: 20px; \n      border-radius: 8px 8px 0 0; \n    }\n    .header h1 {\n      margin: 0 0 10px 0;\n      font-size: 24px;\n    }\n    .content { \n      background: #f9fafb; \n      padding: 20px; \n      border-radius: 0 0 8px 8px; \n    }\n    .section {\n      background: white;\n      padding: 15px;\n      margin: 12px 0;\n      border-left: 4px solid #2563eb;\n      border-radius: 4px;\n    }\n    .section h3 {\n      margin-top: 0;\n      color: #2563eb;\n    }\n    .highlight-box {\n      background: #eff6ff;\n      border-left: 4px solid #2563eb;\n      padding: 15px;\n      margin: 15px 0;\n      border-radius: 4px;\n    }\n    .footer { \n      text-align: center; \n      margin-top: 20px; \n      color: #6b7280; \n      font-size: 12px; \n    }\n    .button {\n      display: inline-block;\n      background: #2563eb;\n      color: white;\n      padding: 12px 24px;\n      text-decoration: none;\n      border-radius: 4px;\n      margin-top: 10px;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>📋 Notificación de Auditoría</h1>\n      <p>Actividad #${actividad.numero || 'N/A'}</p>\n    </div>\n\n    <div class=\"content\">\n      <p>Hola <strong>${auditado.nombre || 'Auditado'}</strong>,</p>\n\n      <p>Te informamos que has sido designado como auditado para la siguiente auditoría:</p>\n\n      <div class=\"section\">\n        <h3>📅 Fecha de Inicio</h3>\n        <p><strong>${fechaInicio}</strong></p>\n      </div>\n\n      <div class=\"section\">\n        <h3>🎯 Objetivo</h3>\n        <p>${(preparacion.objetivo || 'No especificado').replace(/\\n/g, '<br>')}</p>\n      </div>\n\n      <div class=\"section\">\n        <h3>📊 Alcance</h3>\n        <p>${(preparacion.alcance || 'No especificado').replace(/\\n/g, '<br>')}</p>\n      </div>\n\n      ${preparacion.criterios ? `\n      <div class=\"section\">\n        <h3>✅ Criterios</h3>\n        <p>${preparacion.criterios.replace(/\\n/g, '<br>')}</p>\n      </div>\n      ` : ''}\n\n      ${preparacion.riesgos ? `\n      <div class=\"section\">\n        <h3>⚠️ Riesgos</h3>\n        <p>${preparacion.riesgos.replace(/\\n/g, '<br>')}</p>\n      </div>\n      ` : ''}\n\n      <div class=\"highlight-box\">\n        <h3 style=\"margin-top: 0;\">📄 Solicitud de Documentación</h3>\n        <p>\n          Se solicita documentación relacionada a las áreas auditadas.\n          <strong>El plazo de entrega es de 8 días hábiles.</strong>\n        </p>\n        <p><strong>Fecha límite: ${fechaLimiteFormateada}</strong></p>\n        <p style=\"font-size: 12px; color: #6b7280; margin-top: 10px;\">\n          Recibirás una solicitud formal en el sistema con los detalles específicos de la documentación requerida.\n        </p>\n      </div>\n\n      <p style=\"margin-top: 20px;\">\n        Por favor, revisa esta información en el sistema de auditoría y confirma tu participación.\n      </p>\n\n      ${actividad.descripcion ? `\n      <div class=\"section\">\n        <h3>📋 Descripción de la Actividad</h3>\n        <p>${actividad.descripcion.replace(/\\n/g, '<br>')}</p>\n      </div>\n      ` : ''}\n    </div>\n\n    <div class=\"footer\">\n      <p>\n        Este es un correo automático del Sistema de Auditoría.<br>\n        Generado el ${new Date().toLocaleDateString('es-ES')} a las ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}<br>\n        No responder a este mensaje.\n      </p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    auditado_id: auditado.user_id,\n    auditado_email: auditado.email,\n    auditado_nombre: auditado.nombre,\n    comunicacion_id: auditado.comunicacion_id,\n    auditoria_id: auditoria.id,\n    fecha_limite_documentacion: fechaLimiteDoc.toISOString().split('T')[0],\n    html: htmlTemplate,\n    asunto: `Auditoría - Actividad #${actividad.numero || 'N/A'} - Notificación de Inicio`\n  }\n}];"
+      },
+      "id": "code-generar-html",
+      "name": "Code - Generar HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.auditado_email }}",
+        "subject": "={{ $json.asunto }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "gmail-enviar",
+      "name": "Gmail - Enviar Correo",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2000,
+        300
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-credentials",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ksnehijfwxtfbspqvdwq.supabase.co/rest/v1/solicitudes_documentacion",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "auditoria_id",
+              "value": "={{ $json.auditoria_id }}"
+            },
+            {
+              "name": "titulo",
+              "value": "Solicitud de Documentación - Auditoría"
+            },
+            {
+              "name": "descripcion",
+              "value": "Se solicita documentación relacionada a las áreas auditadas para la auditoría en curso. Por favor, proporciona la documentación requerida mediante el link de Google Drive."
+            },
+            {
+              "name": "tipo_documento",
+              "value": "Documentación General"
+            },
+            {
+              "name": "destinatario_id",
+              "value": "={{ $json.auditado_id }}"
+            },
+            {
+              "name": "solicitado_por",
+              "value": "={{ $('Code - Preparar Datos Completos').first().json.auditor_responsable?.id || $('Code - Preparar Datos Completos').first().json.auditoria.auditor_responsable_id }}"
+            },
+            {
+              "name": "fecha_limite",
+              "value": "={{ $json.fecha_limite_documentacion }}"
+            },
+            {
+              "name": "estado",
+              "value": "PENDIENTE"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-crear-solicitud",
+      "name": "HTTP Request - Crear Solicitud Documentación",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ksnehijfwxtfbspqvdwq.supabase.co/rest/v1/comunicaciones_auditado?id=eq.{{ $json.comunicacion_id }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "confirmado",
+              "value": "true"
+            },
+            {
+              "name": "fecha_confirmacion",
+              "value": "={{ $now.toISO() }}"
+            },
+            {
+              "name": "metodo_envio",
+              "value": "AMBOS"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-actualizar-comunicacion",
+      "name": "HTTP Request - Actualizar Comunicación",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2660,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - Recibir Notificación": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code - Validar y Preparar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validar y Preparar": {
+      "main": [
+        [
+          {
+            "node": "IF - ¿Necesita consultar DB?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - ¿Necesita consultar DB?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Consultar DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Preparar Datos Completos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Consultar DB": {
+      "main": [
+        [
+          {
+            "node": "Code - Preparar Datos Completos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Preparar Datos Completos": {
+      "main": [
+        [
+          {
+            "node": "Code - Duplicar Datos por Auditado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Duplicar Datos por Auditado": {
+      "main": [
+        [
+          {
+            "node": "Code - Generar HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generar HTML": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Enviar Correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Enviar Correo": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Crear Solicitud Documentación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Crear Solicitud Documentación": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Actualizar Comunicación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-01-07T00:00:00.000Z",
+  "versionId": "1"
+}
+

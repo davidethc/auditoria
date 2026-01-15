@@ -1,0 +1,216 @@
+{
+  "name": "Notificaciones Mensuales - Actividades de Auditoría",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 1 * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://ksnehijfwxtfbspqvdwq.supabase.co/rest/v1/rpc/get_monthly_activities_notifications",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "p_month_date",
+              "value": "={{ $now.toISO().split('T')[0] }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-request",
+      "name": "HTTP Request - Obtener Actividades",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Obtener todos los items de entrada\nconst items = $input.all();\n\n// Si no hay items, retornar array vacío\nif (!items || items.length === 0) {\n  return [];\n}\n\n// Obtener la respuesta del primer item\nconst firstItem = items[0];\nlet response = firstItem.json;\n\n// Debug: ver qué estamos recibiendo\nconsole.log('Tipo de respuesta:', typeof response);\nconsole.log('Respuesta completa:', JSON.stringify(response, null, 2));\n\n// Si la respuesta es un string, parsearlo\nif (typeof response === 'string') {\n  try {\n    response = JSON.parse(response);\n  } catch (e) {\n    console.error('Error parseando JSON:', e);\n    return [];\n  }\n}\n\n// Si la respuesta es un objeto con propiedades, buscar el array\nlet data = response;\nif (data && !Array.isArray(data) && typeof data === 'object') {\n  // Buscar la primera propiedad que sea un array\n  const keys = Object.keys(data);\n  console.log('Claves del objeto:', keys);\n  \n  for (const key of keys) {\n    if (Array.isArray(data[key])) {\n      console.log('Array encontrado en clave:', key);\n      data = data[key];\n      break;\n    }\n  }\n  \n  // Si no encontramos un array, verificar si el objeto mismo tiene la estructura\n  if (!Array.isArray(data) && data.auditor_id) {\n    // Es un solo auditor, convertirlo a array\n    data = [data];\n  }\n}\n\n// Asegurar que sea un array\nif (!Array.isArray(data)) {\n  console.log('No es un array, data:', data);\n  // Intentar extraer si está dentro de otro objeto\n  if (data && typeof data === 'object') {\n    // Buscar cualquier propiedad que sea array\n    for (const key in data) {\n      if (Array.isArray(data[key])) {\n        data = data[key];\n        break;\n      }\n    }\n  }\n  \n  // Si aún no es array, retornar vacío\n  if (!Array.isArray(data)) {\n    console.log('Finalmente no es array, retornando vacío');\n    return [];\n  }\n}\n\nconsole.log('Datos procesados, cantidad:', data.length);\n\n// Retornar cada auditor con sus actividades como un item separado\nconst result = data.map(auditor => {\n  if (!auditor || typeof auditor !== 'object') {\n    return null;\n  }\n  \n  return {\n    json: {\n      auditor_id: auditor.auditor_id || null,\n      auditor_email: auditor.auditor_email || null,\n      auditor_name: auditor.auditor_name || null,\n      activities: Array.isArray(auditor.activities) ? auditor.activities : []\n    }\n  };\n}).filter(item => item !== null);\n\nconsole.log('Items retornados:', result.length);\nreturn result;"
+      },
+      "id": "code-parse",
+      "name": "Code - Parsear Respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-condition",
+      "name": "IF - ¿Hay actividades?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Obtener datos del item actual\nconst auditor = $input.item.json;\n\n// Preparar datos para el template HTML\nconst monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', \n                    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];\nconst now = new Date();\nconst monthName = monthNames[now.getMonth()];\nconst monthNameCapitalized = monthName.charAt(0).toUpperCase() + monthName.slice(1);\nconst year = now.getFullYear();\n\n// Mapear prioridades a clases CSS\nconst priorityClassMap = {\n  'ALTA': 'priority-alta',\n  'MEDIA': 'priority-media',\n  'BAJA': 'priority-baja',\n  'RIESGO OPERATIVO': 'priority-riesgo-operativo',\n  'RIESGO_OPERATIVO': 'priority-riesgo-operativo'\n};\n\n// Formatear actividades para el HTML\nconst activitiesHtml = (auditor.activities || []).map(activity => {\n  const priorityUpper = (activity.priority || '').toUpperCase();\n  const priorityClass = priorityClassMap[priorityUpper] || 'priority-media';\n  const priorityText = activity.priority || 'Sin prioridad';\n  \n  return {\n    ...activity,\n    priorityClass,\n    priorityText,\n    startDateFormatted: activity.start_date ? new Date(activity.start_date).toLocaleDateString('es-ES') : 'N/A',\n    endDateFormatted: activity.end_date ? new Date(activity.end_date).toLocaleDateString('es-ES') : 'N/A'\n  };\n});\n\n// Generar HTML completo\nconst activitiesHtmlString = activitiesHtml.map(activity => `\n      <div class=\"activity\">\n        <div>\n          <span class=\"activity-number\">\n            Actividad #${activity.activity_number}\n          </span>\n          <span class=\"priority ${activity.priorityClass}\">\n            ${activity.priorityText}\n          </span>\n        </div>\n\n        <p style=\"margin-top: 10px; font-weight: bold;\">\n          ${(activity.activity_description || 'Sin descripción').replace(/</g, '&lt;').replace(/>/g, '&gt;')}\n        </p>\n\n        <div class=\"activity-info\">\n          <p>\n            <strong>Componente:</strong> ${activity.component || 'N/A'}<br>\n            <strong>Subcomponente:</strong> ${activity.subcomponent || 'N/A'}<br>\n            <strong>Plan:</strong> ${activity.plan_type || 'N/A'} ${activity.plan_year || 'N/A'}<br>\n            <strong>Fecha inicio:</strong> ${activity.startDateFormatted}<br>\n            <strong>Fecha fin:</strong> ${activity.endDateFormatted}\n          </p>\n        </div>\n      </div>`).join('');\n\nconst htmlTemplate = `<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body { \n      font-family: Arial, sans-serif; \n      line-height: 1.6; \n      color: #333; \n      background: #f3f4f6;\n      margin: 0;\n      padding: 0;\n    }\n    .container { \n      max-width: 600px; \n      margin: 0 auto; \n      padding: 20px; \n    }\n    .header { \n      background: #2563eb; \n      color: white; \n      padding: 20px; \n      border-radius: 8px 8px 0 0; \n    }\n    .header h1 {\n      margin: 0 0 10px 0;\n      font-size: 24px;\n    }\n    .content { \n      background: #f9fafb; \n      padding: 20px; \n      border-radius: 0 0 8px 8px; \n    }\n    .activity { \n      background: white; \n      padding: 15px; \n      margin: 12px 0; \n      border-left: 4px solid #2563eb; \n      border-radius: 4px; \n      box-shadow: 0 1px 3px rgba(0,0,0,0.1);\n    }\n    .activity-number { \n      font-weight: bold; \n      color: #2563eb; \n      font-size: 16px;\n    }\n    .priority { \n      display: inline-block; \n      padding: 4px 8px; \n      border-radius: 4px; \n      font-size: 12px; \n      margin-left: 10px; \n      text-transform: uppercase;\n      font-weight: bold;\n    }\n    .priority-alta,\n    .priority-riesgo-operativo { \n      background: #fee2e2; \n      color: #991b1b; \n    }\n    .priority-media { \n      background: #fef3c7; \n      color: #92400e; \n    }\n    .priority-baja { \n      background: #d1fae5; \n      color: #065f46; \n    }\n    .activity-info {\n      margin-top: 10px;\n      font-size: 14px;\n    }\n    .activity-info p {\n      margin: 5px 0;\n    }\n    .footer { \n      text-align: center; \n      margin-top: 20px; \n      color: #6b7280; \n      font-size: 12px; \n    }\n    .count-badge {\n      display: inline-block;\n      background: #2563eb;\n      color: white;\n      padding: 4px 12px;\n      border-radius: 12px;\n      font-weight: bold;\n      margin-left: 10px;\n    }\n    .reminder-box {\n      margin-top: 20px; \n      padding: 15px; \n      background: #eff6ff; \n      border-radius: 4px; \n      border-left: 4px solid #2563eb;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>📋 Actividades de Auditoría - ${monthNameCapitalized} ${year}</h1>\n      <p>\n        Auditor: <strong>${auditor.auditor_name}</strong>\n      </p>\n    </div>\n\n    <div class=\"content\">\n      <p>\n        Hola <strong>${auditor.auditor_name}</strong>,\n      </p>\n\n      <p>\n        Tienes <strong>${auditor.activities.length}</strong> actividad(es) asignada(s) que inician este mes:\n        <span class=\"count-badge\">${auditor.activities.length}</span>\n      </p>\n\n      ${activitiesHtmlString}\n\n      <div class=\"reminder-box\">\n        <p style=\"margin: 0;\">\n          <strong>📌 Recordatorio:</strong> Por favor, revisa estas actividades en el sistema de auditoría y prepárate para iniciarlas según las fechas programadas.\n        </p>\n      </div>\n    </div>\n\n    <div class=\"footer\">\n      <p>\n        Este es un correo automático del Sistema de Auditoría.<br>\n        Generado el ${now.toLocaleDateString('es-ES')} a las ${now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}<br>\n        No responder a este mensaje.\n      </p>\n    </div>\n  </div>\n</body>\n</html>`;\n\nreturn [{\n  json: {\n    auditor_name: auditor.auditor_name,\n    auditor_email: auditor.auditor_email,\n    auditor_id: auditor.auditor_id,\n    month_name: monthName,\n    month_name_capitalized: monthNameCapitalized,\n    year: year,\n    activities_count: auditor.activities.length,\n    html: htmlTemplate\n  }\n}];"
+      },
+      "id": "code-javascript",
+      "name": "Code - Preparar Datos y HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toEmail": "={{ $json.auditor_email }}",
+        "subject": "={{ 'Actividades de Auditoría - ' + $json.month_name_capitalized + ' ' + $json.year }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "gmail-send",
+      "name": "Gmail - Enviar Correo",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1340,
+        300
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-credentials",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Obtener Actividades",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Obtener Actividades": {
+      "main": [
+        [
+          {
+            "node": "Code - Parsear Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parsear Respuesta": {
+      "main": [
+        [
+          {
+            "node": "IF - ¿Hay actividades?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - ¿Hay actividades?": {
+      "main": [
+        [
+          {
+            "node": "Code - Preparar Datos y HTML",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Code - Preparar Datos y HTML": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Enviar Correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-01-07T00:00:00.000Z",
+  "versionId": "1"
+}

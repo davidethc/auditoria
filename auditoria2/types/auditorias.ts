@@ -28,11 +28,17 @@ export type EstadoInforme =
   | 'CON_CORRECCIONES';
 
 export type EstadoObservacion = 
-  | 'NO_INICIADA'
-  | 'EN_PROCESO'
-  | 'COMPLETADA'
-  | 'VENCIDA'
-  | 'CANCELADA';
+  | 'NO_INICIADA'              // La acción correctiva aún no ha comenzado
+  | 'EN_PROCESO'               // El área auditada está implementando las acciones correctivas
+  | 'EN_VALIDACION'            // El área auditada ha reportado la finalización, auditoría está revisando evidencia
+  | 'COMPLETADA'               // La acción correctiva ha sido completada con éxito
+  | 'REABIERTA'                // Se detectó que las acciones fueron ineficaces o el riesgo persiste
+  | 'REPROGRAMADA'             // 1ra reprogramación - fecha extendida por razones justificadas (requiere aprobación)
+  | 'REPROGRAMADA_2DA'         // 2da reprogramación
+  | 'CUMPLIDA_CON_REPROGRAMACION' // Cumplida pero con reprogramación previa
+  | 'REPROGRAMADA_VENCIDA'     // Reprogramada pero vencida nuevamente
+  | 'VENCIDA'                  // El plazo establecido ha expirado sin completarse
+  | 'CANCELADA';               // Cancelada por Auditoría
 
 export type TipoEvidencia = 
   | 'EVIDENCIA'

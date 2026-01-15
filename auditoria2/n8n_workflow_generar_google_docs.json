@@ -1,0 +1,362 @@
+{
+  "name": "Generar Google Docs - Informe de Auditoría",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generar-word-informe",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook - Recibir Solicitud",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "generar-word-informe"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Solicitud recibida\", \"informe_id\": $json.body.informe_id } }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validar y extraer informe_id\nconst body = $input.item.json.body || $input.item.json;\n\nif (!body.informe_id) {\n  throw new Error('Falta informe_id en el request');\n}\n\nreturn [{\n  json: {\n    informe_id: body.informe_id\n  }\n}];"
+      },
+      "id": "code-validar",
+      "name": "Code - Validar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://ksnehijfwxtfbspqvdwq.supabase.co/rest/v1/auditoria_informe?id=eq.{{ $json.informe_id }}&select=*",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-obtener-informe",
+      "name": "HTTP Request - Obtener Informe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar datos del informe\nconst respuesta = $input.item.json;\nconst informe = Array.isArray(respuesta) ? respuesta[0] : respuesta;\n\nif (!informe || !informe.id) {\n  throw new Error('No se encontró el informe en Supabase');\n}\n\n// Obtener observaciones si están en observaciones_enumeradas\nlet observaciones = [];\nif (informe.observaciones_enumeradas && Array.isArray(informe.observaciones_enumeradas)) {\n  observaciones = informe.observaciones_enumeradas;\n}\n\n// Formatear fechas\nconst formatearFecha = (fecha) => {\n  if (!fecha) return 'No definida';\n  try {\n    return new Date(fecha).toLocaleDateString('es-ES', {\n      year: 'numeric',\n      month: 'long',\n      day: 'numeric'\n    });\n  } catch {\n    return fecha;\n  }\n};\n\n// Obtener nombres de usuarios (si están disponibles en el informe)\nlet elaboradoPorNombre = 'No especificado';\nlet aprobadoPorNombre = null;\n\n// Intentar obtener nombres de usuarios si hay IDs\nif (informe.elaborado_por_user && informe.elaborado_por_user.full_name) {\n  elaboradoPorNombre = informe.elaborado_por_user.full_name;\n} else if (informe.elaborado_por) {\n  // Si solo hay ID, usar un valor por defecto\n  elaboradoPorNombre = 'Auditor';\n}\n\nif (informe.aprobado_por_user && informe.aprobado_por_user.full_name) {\n  aprobadoPorNombre = informe.aprobado_por_user.full_name;\n} else if (informe.aprobado_por) {\n  aprobadoPorNombre = 'Aprobador';\n}\n\n// Preparar contenido estructurado para Google Docs\nconst contenido = {\n  informe_id: informe.id,\n  auditoria_id: informe.auditoria_id,\n  titulo: informe.encabezado || 'INFORME DE AUDITORÍA',\n  encabezado: {\n    de: informe.de || 'No especificado',\n    para: informe.para || 'No especificado',\n    asunto: informe.asunto || 'No especificado',\n    fecha: formatearFecha(informe.fecha_inicio_informe)\n  },\n  secciones: [\n    {\n      titulo: 'ANTECEDENTES',\n      contenido: informe.antecedentes || ''\n    },\n    {\n      titulo: 'OBJETIVOS',\n      contenido: informe.objetivos || ''\n    },\n    {\n      titulo: 'ALCANCE',\n      contenido: informe.alcance || ''\n    },\n    {\n      titulo: 'RESULTADOS DE LA REVISIÓN',\n      contenido: informe.resultados_revision || ''\n    },\n    {\n      titulo: 'METODOLOGÍA APLICADA',\n      contenido: informe.metodologia_aplicada || ''\n    }\n  ].filter(sec => sec.contenido),\n  observaciones: observaciones.map((obs, idx) => ({\n    numero: obs.numero || idx + 1,\n    titulo: obs.titulo || '',\n    descripcion: obs.descripcion || '',\n    recomendacion: obs.recomendacion || ''\n  })),\n  estrategia: {\n    texto: informe.estrategia || '',\n    fecha_inicio: formatearFecha(informe.fecha_inicio_implementacion),\n    fecha_fin: formatearFecha(informe.fecha_fin_implementacion),\n    entregable: informe.entregable || ''\n  },\n  conclusiones: informe.conclusiones || '',\n  recomendaciones_generales: informe.recomendaciones_generales || '',\n  firmas: {\n    elaborado_por: elaboradoPorNombre,\n    fecha_elaboracion: formatearFecha(informe.fecha_elaboracion),\n    aprobado_por: aprobadoPorNombre,\n    fecha_aprobacion: formatearFecha(informe.fecha_aprobacion)\n  }\n};\n\nreturn [{\n  json: contenido\n}];"
+      },
+      "id": "code-preparar-datos",
+      "name": "Code - Preparar Datos Estructurados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://docs.googleapis.com/v1/documents",
+        "authentication": "oAuth2",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"title\": $json.titulo } }}",
+        "options": {
+          "oAuth2": {
+            "credentialType": "googleApi",
+            "scope": "https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file"
+          }
+        }
+      },
+      "id": "http-crear-doc",
+      "name": "HTTP Request - Crear Google Docs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 300],
+      "credentials": {
+        "googleApiOAuth2": {
+          "id": "google-drive-credentials",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generar requests para batchUpdate de Google Docs (versión simplificada)\nconst data = $('Code - Preparar Datos Estructurados').item.json;\nconst docId = $json.documentId;\n\nif (!docId) {\n  throw new Error('No se obtuvo documentId del documento creado');\n}\n\nconst requests = [];\nlet currentIndex = 1;\n\n// Construir todo el texto primero\nlet textoCompleto = '';\n\n// 1. Encabezado\ntextoCompleto += `De: ${data.encabezado.de}\\n`;\ntextoCompleto += `Para: ${data.encabezado.para}\\n`;\ntextoCompleto += `Asunto: ${data.encabezado.asunto}\\n`;\ntextoCompleto += `Fecha: ${data.encabezado.fecha}\\n\\n`;\n\n// 2. Secciones\nlet seccionNum = 1;\nfor (const seccion of data.secciones) {\n  textoCompleto += `${seccionNum}. ${seccion.titulo}\\n`;\n  textoCompleto += `${seccion.contenido}\\n\\n`;\n  seccionNum++;\n}\n\n// 3. Observaciones\nif (data.observaciones.length > 0) {\n  textoCompleto += `${seccionNum}. OBSERVACIONES\\n`;\n  for (const obs of data.observaciones) {\n    textoCompleto += `OBSERVACIÓN N° ${obs.numero}\\n`;\n    if (obs.titulo) textoCompleto += `Título: ${obs.titulo}\\n`;\n    if (obs.descripcion) textoCompleto += `Descripción: ${obs.descripcion}\\n`;\n    if (obs.recomendacion) textoCompleto += `Recomendación: ${obs.recomendacion}\\n\\n`;\n  }\n  seccionNum++;\n}\n\n// 4. Estrategia\nif (data.estrategia.texto) {\n  textoCompleto += `${seccionNum}. ESTRATEGIA DE IMPLEMENTACIÓN\\n`;\n  textoCompleto += `${data.estrategia.texto}\\n`;\n  if (data.estrategia.fecha_inicio) textoCompleto += `Fecha de inicio: ${data.estrategia.fecha_inicio}\\n`;\n  if (data.estrategia.fecha_fin) textoCompleto += `Fecha de fin: ${data.estrategia.fecha_fin}\\n`;\n  if (data.estrategia.entregable) textoCompleto += `Entregable: ${data.estrategia.entregable}\\n\\n`;\n  seccionNum++;\n}\n\n// 5. Conclusiones\nif (data.conclusiones) {\n  textoCompleto += `${seccionNum}. CONCLUSIONES\\n`;\n  textoCompleto += `${data.conclusiones}\\n\\n`;\n  seccionNum++;\n}\n\n// 6. Recomendaciones\nif (data.recomendaciones_generales) {\n  textoCompleto += `${seccionNum}. RECOMENDACIONES GENERALES\\n`;\n  textoCompleto += `${data.recomendaciones_generales}\\n\\n`;\n}\n\n// 7. Firmas\ntextoCompleto += 'FIRMAS\\n';\ntextoCompleto += `Elaborado por: ${data.firmas.elaborado_por}\\n`;\ntextoCompleto += `Fecha de elaboración: ${data.firmas.fecha_elaboracion}\\n`;\nif (data.firmas.aprobado_por) {\n  textoCompleto += `Aprobado por: ${data.firmas.aprobado_por}\\n`;\n  textoCompleto += `Fecha de aprobación: ${data.firmas.fecha_aprobacion}\\n`;\n}\n\n// Insertar todo el texto de una vez\nrequests.push({\n  insertText: {\n    location: { index: currentIndex },\n    text: textoCompleto\n  }\n});\n\n// Aplicar formato básico: hacer negritas en títulos y etiquetas\n// Usar expresiones regulares para encontrar patrones\nconst lineas = textoCompleto.split('\\n');\nlet charIndex = currentIndex;\n\nfor (let i = 0; i < lineas.length; i++) {\n  const linea = lineas[i];\n  const esTituloSeccion = /^\\d+\\.\\s+[A-ZÁÉÍÓÚÑ\\s]+$/.test(linea.trim());\n  const esObservacion = /^OBSERVACIÓN N°/.test(linea.trim());\n  const esFirma = /^FIRMAS$/.test(linea.trim());\n  const esEtiqueta = /^(De:|Para:|Asunto:|Fecha:|Título:|Descripción:|Recomendación:|Fecha de inicio:|Fecha de fin:|Entregable:|Elaborado por:|Fecha de elaboración:|Aprobado por:|Fecha de aprobación:)/.test(linea.trim());\n  \n  if (esTituloSeccion || esObservacion || esFirma) {\n    const startIdx = charIndex;\n    const endIdx = charIndex + linea.length;\n    \n    requests.push({\n      updateTextStyle: {\n        range: { startIndex: startIdx, endIndex: endIdx },\n        textStyle: { bold: true, fontSize: { magnitude: 14, unit: 'PT' } },\n        fields: 'bold,fontSize'\n      }\n    });\n  } else if (esEtiqueta) {\n    // Solo la etiqueta en negrita, no el valor\n    const match = linea.match(/^([^:]+:)/);\n    if (match) {\n      const etiquetaLength = match[1].length;\n      const startIdx = charIndex;\n      const endIdx = charIndex + etiquetaLength;\n      \n      requests.push({\n        updateTextStyle: {\n          range: { startIndex: startIdx, endIndex: endIdx },\n          textStyle: { bold: true },\n          fields: 'bold'\n        }\n      });\n    }\n  }\n  \n  charIndex += linea.length + 1; // +1 por el \\n\n}\n\nreturn [{\n  json: {\n    documentId: docId,\n    requests: requests\n  }\n}];"
+      },
+      "id": "code-generar-requests",
+      "name": "Code - Generar Requests batchUpdate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://docs.googleapis.com/v1/documents/{{ $json.documentId }}:batchUpdate",
+        "authentication": "oAuth2",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"requests\": $json.requests } }}",
+        "options": {
+          "oAuth2": {
+            "credentialType": "googleApi",
+            "scope": "https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file"
+          }
+        }
+      },
+      "id": "http-batch-update",
+      "name": "HTTP Request - BatchUpdate Google Docs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 300],
+      "credentials": {
+        "googleApiOAuth2": {
+          "id": "google-drive-credentials",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('HTTP Request - Crear Google Docs').item.json.documentId }}?addParents=1QHoiXg2FMGy36OS3tfstLllhWDLvWbSL&fields=id,name",
+        "authentication": "oAuth2",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": false,
+        "options": {
+          "oAuth2": {
+            "credentialType": "googleApi",
+            "scope": "https://www.googleapis.com/auth/drive.file"
+          }
+        }
+      },
+      "id": "http-mover-carpeta",
+      "name": "HTTP Request - Mover a Carpeta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 300],
+      "credentials": {
+        "googleApiOAuth2": {
+          "id": "google-drive-credentials",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ksnehijfwxtfbspqvdwq.supabase.co/rest/v1/auditoria_informe?id=eq.{{ $('Code - Preparar Datos Estructurados').item.json.informe_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"documento_word_url\": \"https://docs.google.com/document/d/\" + $('HTTP Request - Crear Google Docs').item.json.documentId + \"/edit\" } }}",
+        "options": {}
+      },
+      "id": "http-actualizar-url",
+      "name": "HTTP Request - Actualizar URL en Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar respuesta final\nconst resultado = {\n  success: true,\n  informe_id: $('Code - Preparar Datos Estructurados').item.json.informe_id,\n  document_id: $('HTTP Request - Crear Google Docs').item.json.documentId,\n  documento_word_url: $('HTTP Request - Actualizar URL en Supabase').item.json[0]?.documento_word_url || null,\n  mensaje: 'Documento Google Docs generado exitosamente'\n};\n\nreturn [{\n  json: resultado\n}];"
+      },
+      "id": "code-resultado",
+      "name": "Code - Resultado Final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Recibir Solicitud": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code - Validar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validar": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Obtener Informe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Obtener Informe": {
+      "main": [
+        [
+          {
+            "node": "Code - Preparar Datos Estructurados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Preparar Datos Estructurados": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Crear Google Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Crear Google Docs": {
+      "main": [
+        [
+          {
+            "node": "Code - Generar Requests batchUpdate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generar Requests batchUpdate": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - BatchUpdate Google Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - BatchUpdate Google Docs": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Mover a Carpeta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Mover a Carpeta": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Actualizar URL en Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Actualizar URL en Supabase": {
+      "main": [
+        [
+          {
+            "node": "Code - Resultado Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-08T00:00:00.000Z",
+  "versionId": "1"
+}

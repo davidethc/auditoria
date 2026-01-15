@@ -252,9 +252,56 @@ export default function DocumentsPage() {
       return;
     }
 
+    // Validar plazo de 8 días hábiles (aproximadamente 11 días calendario)
+    let fechaLimiteCalculada = fechaLimite;
+    if (!fechaLimite) {
+      // Si no se especifica fecha límite, calcular automáticamente 8 días hábiles desde hoy
+      const hoy = new Date();
+      let diasAgregados = 0;
+      let diasHabiles = 0;
+      
+      while (diasHabiles < 8) {
+        diasAgregados++;
+        const fecha = new Date(hoy);
+        fecha.setDate(fecha.getDate() + diasAgregados);
+        const diaSemana = fecha.getDay();
+        // Excluir sábados (6) y domingos (0)
+        if (diaSemana !== 0 && diaSemana !== 6) {
+          diasHabiles++;
+        }
+      }
+      
+      const fechaCalculada = new Date(hoy);
+      fechaCalculada.setDate(fechaCalculada.getDate() + diasAgregados);
+      fechaLimiteCalculada = fechaCalculada.toISOString().split('T')[0];
+    } else {
+      // Validar que la fecha límite sea al menos 8 días hábiles desde hoy
+      const fechaLimiteDate = new Date(fechaLimite);
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      fechaLimiteDate.setHours(0, 0, 0, 0);
+      
+      let diasHabiles = 0;
+      let fechaActual = new Date(hoy);
+      
+      while (fechaActual < fechaLimiteDate) {
+        fechaActual.setDate(fechaActual.getDate() + 1);
+        const diaSemana = fechaActual.getDay();
+        if (diaSemana !== 0 && diaSemana !== 6) {
+          diasHabiles++;
+        }
+      }
+      
+      if (diasHabiles < 8) {
+        alert(`⚠️ El plazo mínimo para entregar documentación es de 8 días hábiles. La fecha límite debe ser al menos ${8 - diasHabiles} días hábiles más.`);
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
-      const { error } = await supabase
+      // Insertar solicitud y obtener el ID
+      const { data: nuevaSolicitud, error } = await supabase
         .from('solicitudes_documentacion')
         .insert({
           auditoria_id: selectedAuditoria,
@@ -263,11 +310,55 @@ export default function DocumentsPage() {
           tipo_documento: tipoDocumento || null,
           solicitado_por: user?.id,
           destinatario_id: destinatarioId,
-          fecha_limite: fechaLimite || null,
+          fecha_limite: fechaLimiteCalculada,
           estado: 'PENDIENTE',
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // Obtener datos del auditado y del solicitante para la notificación
+      const { data: auditadoData } = await supabase
+        .from('users')
+        .select('id, email, full_name')
+        .eq('id', destinatarioId)
+        .maybeSingle();
+
+      const { data: solicitanteData } = await supabase
+        .from('users')
+        .select('id, email, full_name')
+        .eq('id', user?.id)
+        .maybeSingle();
+
+      // NOTIFICAR AL AUDITADO vía N8N
+      if (nuevaSolicitud && auditadoData?.email) {
+        try {
+          fetch('/api/notificar-auditado-solicitud-documentacion', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              solicitud_id: nuevaSolicitud.id,
+              auditoria_id: selectedAuditoria,
+              auditado_id: auditadoData.id,
+              auditado_email: auditadoData.email,
+              auditado_nombre: auditadoData.full_name || auditadoData.email,
+              titulo,
+              descripcion,
+              tipo_documento: tipoDocumento || null,
+              fecha_limite: fechaLimiteCalculada || null,
+              solicitado_por_nombre: solicitanteData?.full_name || solicitanteData?.email || 'Auditor',
+              solicitado_por_email: solicitanteData?.email || null,
+            }),
+          }).catch((error) => {
+            console.error('Error llamando webhook N8N (no crítico):', error);
+          });
+        } catch (notifError) {
+          console.error('Error notificando auditado (no crítico):', notifError);
+        }
+      }
 
       setShowModal(false);
       setTitulo('');
@@ -289,6 +380,17 @@ export default function DocumentsPage() {
   const handleResponder = async () => {
     if (!linkDrive) {
       alert('Ingresa el link de Drive');
+      return;
+    }
+
+    // Validar formato del link de Drive
+    const drivePatterns = [
+      /^https?:\/\/(drive\.google\.com|docs\.google\.com)/,
+      /^https?:\/\/.*google.*drive/,
+    ];
+    const esLinkValido = drivePatterns.some(pattern => pattern.test(linkDrive.trim()));
+    if (!esLinkValido) {
+      alert('El link debe ser un enlace válido de Google Drive (drive.google.com o docs.google.com)');
       return;
     }
 

@@ -51,6 +51,12 @@ const navItems: NavItem[] = [
     // Permitir a auditores y auditores internos
   },
   {
+    title: 'Historial de Hallazgos',
+    href: '/auditorias/historial-hallazgos',
+    icon: FileCheck,
+    requiresRole: 'auditado',
+  },
+  {
     title: 'Documents',
     href: '/documents',
     icon: FileText,
@@ -88,6 +94,12 @@ const navItems: NavItem[] = [
   {
     title: 'Revisión de Informes',
     href: '/auditorias/revision',
+    icon: FileCheck,
+    requiresRole: 'auditor_interno',
+  },
+  {
+    title: 'Revisión de Descargos',
+    href: '/auditorias/revision-descargos',
     icon: FileCheck,
     requiresRole: 'auditor_interno',
   },

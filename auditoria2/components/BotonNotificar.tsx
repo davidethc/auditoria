@@ -104,6 +104,23 @@ export function BotonNotificar({ auditoria, onSuccess }: BotonNotificarProps) {
         throw new Error('No hay auditados agregados');
       }
 
+      // Obtener emails y nombres de los auditados
+      const { data: usuariosAuditados, error: usuariosError } = await supabase
+        .from('users')
+        .select('id, email, full_name')
+        .in('id', auditados.map(a => a.user_id));
+
+      if (usuariosError) throw usuariosError;
+
+      const auditadosConDatos = auditados.map(a => {
+        const usuario = usuariosAuditados?.find(u => u.id === a.user_id);
+        return {
+          user_id: a.user_id,
+          email: usuario?.email || null,
+          nombre: usuario?.full_name || usuario?.email || null,
+        };
+      });
+
       const { data: actividad, error: actError } = await supabase
         .from('audit_activities')
         .select('activity_number, activity_description, start_date, end_date, priority, component, subcomponent')
@@ -140,7 +157,7 @@ ${preparacion.recursos_necesarios ? `RECURSOS NECESARIOS:\n${preparacion.recurso
 Por favor, revisa esta información y confirma tu participación.
       `.trim();
 
-      const comunicaciones = auditados.map(participante => ({
+      const comunicaciones = auditadosConDatos.map(participante => ({
         auditoria_id: auditoria.id,
         destinatario_id: participante.user_id,
         tipo_comunicacion: 'NOTIFICACION',
@@ -151,11 +168,122 @@ Por favor, revisa esta información y confirma tu participación.
         confirmado: false,
       }));
 
-      const { error: comError } = await supabase
+      const { error: comError, data: comunicacionesInsertadas } = await supabase
         .from('comunicaciones_auditado')
-        .insert(comunicaciones);
+        .insert(comunicaciones)
+        .select('id, destinatario_id');
 
       if (comError) throw comError;
+
+      // Llamar webhook de N8N para enviar correos y crear solicitudes automáticamente
+      const webhookUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL || 'http://localhost:5678/webhook-test/notificar-auditados';
+      
+      try {
+        const webhookPayload = {
+          auditoria_id: auditoria.id,
+          preparacion: {
+            objetivo: preparacion.objetivo,
+            alcance: preparacion.alcance,
+            criterios: preparacion.criterios,
+            riesgos: preparacion.riesgos || null,
+            metodologia: preparacion.metodologia || null,
+            recursos_necesarios: preparacion.recursos_necesarios || null,
+          },
+          actividad: {
+            numero: actividad?.activity_number,
+            descripcion: actividad?.activity_description,
+            componente: actividad?.component,
+            subcomponente: actividad?.subcomponent,
+            priority: actividad?.priority,
+          },
+          fechas: {
+            inicio: auditoria.fecha_inicio,
+            fin: auditoria.fecha_fin,
+          },
+          auditados: auditadosConDatos.map(a => {
+            const comunicacion = comunicacionesInsertadas?.find(c => c.destinatario_id === a.user_id);
+            return {
+              user_id: a.user_id,
+              email: a.email,
+              nombre: a.nombre,
+              comunicacion_id: comunicacion?.id || null,
+            };
+          }),
+          comunicaciones_ids: comunicacionesInsertadas?.map(c => c.id) || [],
+        };
+
+        // Llamar webhook de forma asíncrona (no bloquea si falla)
+        fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(webhookPayload),
+        }).catch((webhookError) => {
+          console.error('Error llamando webhook N8N (no crítico):', webhookError);
+          // No lanzar error, solo loguear - los datos ya están en DB
+        });
+      } catch (webhookError) {
+        console.error('Error preparando webhook N8N (no crítico):', webhookError);
+        // No lanzar error, solo loguear
+      }
+
+      // Actualizar participantes: establecer fecha_notificacion y estado
+      const auditadoUserIds = auditados.map(a => a.user_id).filter(Boolean);
+      
+      if (auditadoUserIds.length > 0) {
+        const { error: partUpdateError, data: partUpdateData } = await supabase
+          .from('auditoria_participantes')
+          .update({
+            fecha_notificacion: new Date().toISOString(),
+            estado_participacion: 'NOTIFICADO',
+          })
+          .eq('auditoria_id', auditoria.id)
+          .in('user_id', auditadoUserIds)
+          .select('id, user_id');
+
+        if (partUpdateError) {
+          console.error('Error actualizando participantes:', {
+            error: partUpdateError,
+            message: partUpdateError.message,
+            details: partUpdateError.details,
+            hint: partUpdateError.hint,
+            code: partUpdateError.code,
+            auditoria_id: auditoria.id,
+            user_ids: auditadoUserIds,
+            actualizados: partUpdateData?.length || 0,
+          });
+          // No lanzar error, solo loguear
+        } else {
+          console.log(`✅ Participantes actualizados: ${partUpdateData?.length || 0} de ${auditadoUserIds.length}`);
+        }
+      } else {
+        console.warn('⚠️ No hay user_ids válidos para actualizar participantes');
+      }
+
+      // Actualizar auditoría: marcar como notificada
+      const { error: auditoriaError, data: auditoriaUpdateData } = await supabase
+        .from('auditorias')
+        .update({
+          participantes_notificados: true,
+          fecha_notificacion: new Date().toISOString(),
+        })
+        .eq('id', auditoria.id)
+        .select('id, participantes_notificados');
+
+      if (auditoriaError) {
+        console.error('Error actualizando auditoría:', {
+          error: auditoriaError,
+          message: auditoriaError.message,
+          details: auditoriaError.details,
+          hint: auditoriaError.hint,
+          code: auditoriaError.code,
+          auditoria_id: auditoria.id,
+        });
+        // No lanzar error, solo loguear
+      } else {
+        console.log('✅ Auditoría actualizada:', auditoriaUpdateData?.[0]?.id);
+      }
 
       onSuccess();
       alert(`✅ Información enviada a ${auditados.length} auditado(s)`);

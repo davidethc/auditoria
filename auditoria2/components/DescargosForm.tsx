@@ -73,6 +73,15 @@ export function DescargosForm({
     setShowFormulario(true);
   };
 
+  const validarLinkDrive = (url: string): boolean => {
+    // Validar que sea un link válido de Google Drive
+    const drivePatterns = [
+      /^https?:\/\/(drive\.google\.com|docs\.google\.com)/,
+      /^https?:\/\/.*google.*drive/,
+    ];
+    return drivePatterns.some(pattern => pattern.test(url));
+  };
+
   const handleGuardarDescargo = async () => {
     if (!observacionSeleccionada) return;
 
@@ -83,6 +92,12 @@ export function DescargosForm({
 
     if (!linkDrive.trim()) {
       setError('El link de Drive es obligatorio');
+      return;
+    }
+
+    // Validar formato del link
+    if (!validarLinkDrive(linkDrive.trim())) {
+      setError('El link debe ser un enlace válido de Google Drive');
       return;
     }
 

@@ -26,6 +26,7 @@ export interface AuditActivity {
   year: number | null;
   auditor_id: string | null;
   auditor_name?: string | null; // Nombre del responsable asignado
+  auditor_email?: string | null; // Email del responsable asignado
 }
 
 interface TablaActividadesProps {
@@ -239,6 +240,14 @@ export function TablaActividades({
                       onValidacionUpdate?.(activity.id, newStatus);
                     }}
                     canEdit={canEditValidacion}
+                    canNotify={userRole === 'auditor_interno'}
+                    activityData={{
+                      activity_number: activity.activity_number,
+                      activity_description: activity.activity_description,
+                      auditor_id: activity.auditor_id,
+                      auditor_name: activity.auditor_name,
+                      auditor_email: activity.auditor_email,
+                    }}
                     className="min-w-[160px]"
                   />
                 </td>

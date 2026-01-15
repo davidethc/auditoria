@@ -7,7 +7,7 @@ import { supabase } from '@/utils/supabase';
 import { Button } from '@/components/ui/button';
 import { Loader } from '@/components/ui/loader';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, AlertCircle, FileText } from 'lucide-react';
+import { ArrowLeft, AlertCircle, FileText, FileDown, Loader2 } from 'lucide-react';
 import { FormularioInformeBorrador } from '@/components/FormularioInformeBorrador';
 import { RevisorInforme } from '@/components/RevisorInforme';
 import { SocializacionInforme } from '@/components/SocializacionInforme';
@@ -28,6 +28,7 @@ export default function InformePage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>('borrador');
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [isGeneratingWord, setIsGeneratingWord] = useState(false);
 
   useEffect(() => {
     if (params.id && user) {
@@ -50,6 +51,65 @@ export default function InformePage() {
       }
     } catch (err) {
       console.error('Error cargando rol:', err);
+    }
+  };
+
+  const handleGenerarWord = async () => {
+    if (!informe?.id) {
+      alert('No hay informe para generar');
+      return;
+    }
+
+    setIsGeneratingWord(true);
+    setError(null);
+
+    try {
+      console.log('📤 Generando Word para informe:', informe.id);
+
+      const response = await fetch('/api/generar-word-informe', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ informe_id: informe.id }),
+      });
+
+      // Verificar si la respuesta es JSON válido
+      const contentType = response.headers.get('content-type');
+      let data;
+      
+      if (contentType && contentType.includes('application/json')) {
+        const text = await response.text();
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (parseError) {
+          console.error('❌ Error parseando JSON:', parseError, 'Texto recibido:', text);
+          throw new Error(`Respuesta inválida del servidor: ${text.substring(0, 100)}`);
+        }
+      } else {
+        const text = await response.text();
+        console.error('❌ Respuesta no es JSON:', text);
+        throw new Error(`Error del servidor: ${text.substring(0, 100)}`);
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || `Error ${response.status}: ${response.statusText}`);
+      }
+
+      if (data.success) {
+        alert('✅ Documento Word generado correctamente. Revisa Google Drive y N8N para ver el resultado.');
+        // Recargar datos para ver documento_word_url actualizado
+        await loadData();
+      } else {
+        throw new Error(data.error || 'Error al generar Word');
+      }
+    } catch (err) {
+      console.error('❌ Error generando Word:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Error al generar Word';
+      setError(errorMessage);
+      alert(`❌ Error: ${errorMessage}`);
+    } finally {
+      setIsGeneratingWord(false);
     }
   };
 
@@ -231,11 +291,35 @@ export default function InformePage() {
             </p>
           </div>
         </div>
-        {informe && (
-          <Badge variant="outline">
-            Versión {informe.version}
-          </Badge>
-        )}
+        <div className="flex items-center gap-3">
+          {informe && (
+            <>
+              <Badge variant="outline">
+                Versión {informe.version}
+              </Badge>
+              {puedeEditar && (
+                <Button
+                  onClick={handleGenerarWord}
+                  disabled={isGeneratingWord || !informe}
+                  variant="default"
+                  className="gap-2"
+                >
+                  {isGeneratingWord ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generando...
+                    </>
+                  ) : (
+                    <>
+                      <FileDown className="h-4 w-4" />
+                      Generar Word
+                    </>
+                  )}
+                </Button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Tabs según estado */}
@@ -353,7 +437,6 @@ export default function InformePage() {
             informe={informe}
             auditoriaId={auditoria.id}
             onSuccess={loadData}
-            currentUserId={user?.id || ''}
           />
         )}
 
@@ -391,7 +474,7 @@ export default function InformePage() {
 }
 
 // Componentes wrapper para cargar datos adicionales
-function SocializacionInformeWrapper({ informe, auditoriaId, onSuccess, currentUserId }: any) {
+function SocializacionInformeWrapper({ informe, auditoriaId, onSuccess }: any) {
   const [participantes, setParticipantes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -462,7 +545,6 @@ function SocializacionInformeWrapper({ informe, auditoriaId, onSuccess, currentU
       informe={informe}
       participantes={participantes}
       onSuccess={onSuccess}
-      currentUserId={currentUserId}
     />
   );
 }
@@ -542,9 +624,11 @@ function InformeFinalWrapper({ informe, auditoriaId, observaciones, onSuccess, c
   }
 
   const esAuditado = userRole === 'auditado';
+  const esAuditor = userRole === 'auditor' || userRole === 'auditor_interno';
 
   return (
     <div className="space-y-6">
+      {/* Solo el auditado puede completar la estrategia */}
       {esAuditado && (
         <EstrategiaForm
           informe={informe}
@@ -552,6 +636,58 @@ function InformeFinalWrapper({ informe, auditoriaId, observaciones, onSuccess, c
           currentUserId={currentUserId}
           readOnly={false}
         />
+      )}
+
+      {/* El auditor puede ver la estrategia pero no editarla */}
+      {esAuditor && !esAuditado && (
+        <div className="rounded-lg border bg-card p-6 space-y-4">
+          <div>
+            <h3 className="text-lg font-semibold mb-2">Estrategia de Implementación</h3>
+            <p className="text-sm text-muted-foreground">
+              La estrategia y fechas de implementación las define el auditado. Solo puedes verlas.
+            </p>
+          </div>
+          {informe.estrategia ? (
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Estrategia</label>
+                <p className="text-sm whitespace-pre-wrap bg-muted p-3 rounded-md">
+                  {informe.estrategia}
+                </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Fecha de Inicio</label>
+                  <p className="text-sm bg-muted p-3 rounded-md">
+                    {informe.fecha_inicio_implementacion 
+                      ? new Date(informe.fecha_inicio_implementacion).toLocaleDateString('es-ES')
+                      : 'No definida'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Fecha de Fin</label>
+                  <p className="text-sm bg-muted p-3 rounded-md">
+                    {informe.fecha_fin_implementacion 
+                      ? new Date(informe.fecha_fin_implementacion).toLocaleDateString('es-ES')
+                      : 'No definida'}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Entregable</label>
+                <p className="text-sm bg-muted p-3 rounded-md">
+                  {informe.entregable || 'No definido'}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-yellow-200 bg-yellow-50 dark:bg-yellow-950/20 dark:border-yellow-800 p-4">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                ⏳ El auditado aún no ha completado la estrategia de implementación.
+              </p>
+            </div>
+          )}
+        </div>
       )}
 
       <FirmasInforme

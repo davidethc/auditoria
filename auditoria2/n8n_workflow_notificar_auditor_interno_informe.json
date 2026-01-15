@@ -1,0 +1,121 @@
+{
+  "name": "Notificar Auditor Interno - Informe para Revisar",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "notificar-auditor-interno-informe",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-001",
+      "name": "Webhook - Recibir Solicitud",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "notificar-auditor-interno-informe"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Notificación recibida\", \"informe_id\": $json.body.informe_id } }}"
+      },
+      "id": "respond-001",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validar y extraer datos recibidos del webhook\nconst body = $input.item.json.body || $input.item.json;\n\n// Validar campos obligatorios\nif (!body.informe_id) {\n  throw new Error('Falta informe_id en el request');\n}\n\nif (!body.auditor_interno_email) {\n  throw new Error('Falta auditor_interno_email en el request');\n}\n\n// Preparar datos para el correo\nconst data = {\n  informe_id: body.informe_id,\n  auditoria_id: body.auditoria_id,\n  encabezado: body.encabezado || 'Sin encabezado',\n  asunto: body.asunto || 'Sin asunto',\n  de: body.de || 'Sin remitente',\n  para: body.para || 'Sin destinatario',\n  fecha_inicio_informe: body.fecha_inicio_informe || null,\n  auditor_interno_id: body.auditor_interno_id || null,\n  auditor_interno_email: body.auditor_interno_email,\n  auditor_interno_nombre: body.auditor_interno_nombre || body.auditor_interno_email.split('@')[0],\n  timestamp: body.timestamp || new Date().toISOString()\n};\n\nreturn [{\n  json: {\n    ...data,\n    subject: `📄 Informe de Auditoría listo para revisión - ${data.encabezado}`\n  }\n}];"
+      },
+      "id": "code-001",
+      "name": "Code - Validar y Preparar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generar HTML del correo electrónico\nconst data = $input.item.json;\n\nconst fechaFormateada = data.fecha_inicio_informe \n  ? new Date(data.fecha_inicio_informe).toLocaleDateString('es-ES', { \n      year: 'numeric', \n      month: 'long', \n      day: 'numeric'\n    })\n  : 'No especificada';\n\nconst htmlTemplate = `<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body { \n      font-family: Arial, sans-serif; \n      line-height: 1.6; \n      color: #333; \n      background: #f3f4f6;\n      margin: 0;\n      padding: 0;\n    }\n    .container { \n      max-width: 600px; \n      margin: 20px auto; \n      padding: 0;\n      background: white;\n      border-radius: 8px;\n      box-shadow: 0 2px 4px rgba(0,0,0,0.1);\n    }\n    .header { \n      background: #2563eb; \n      color: white; \n      padding: 30px 20px; \n      border-radius: 8px 8px 0 0; \n      text-align: center;\n    }\n    .header h1 {\n      margin: 0 0 10px 0;\n      font-size: 24px;\n    }\n    .content { \n      padding: 30px 20px; \n      background: white;\n    }\n    .report-box {\n      background: #f9fafb;\n      padding: 20px;\n      border-radius: 8px;\n      border-left: 4px solid #2563eb;\n      margin: 20px 0;\n    }\n    .report-box h3 {\n      margin: 0 0 10px 0;\n      color: #2563eb;\n      font-size: 18px;\n    }\n    .report-detail {\n      margin-top: 15px;\n      font-size: 14px;\n      color: #6b7280;\n    }\n    .report-detail p {\n      margin: 8px 0;\n    }\n    .report-detail strong {\n      color: #1f2937;\n    }\n    .button {\n      display: inline-block;\n      padding: 12px 24px;\n      background: #2563eb;\n      color: white;\n      text-decoration: none;\n      border-radius: 6px;\n      margin: 20px 0;\n      font-weight: bold;\n    }\n    .footer { \n      text-align: center; \n      padding: 20px; \n      color: #6b7280; \n      font-size: 12px; \n      background: #f9fafb;\n      border-radius: 0 0 8px 8px;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>📄 Informe de Auditoría para Revisión</h1>\n      <p style=\"margin: 0; opacity: 0.9;\">Sistema de Auditoría Interna</p>\n    </div>\n\n    <div class=\"content\">\n      <p>\n        Hola <strong>${data.auditor_interno_nombre}</strong>,\n      </p>\n\n      <p>\n        El auditor ha enviado un <strong>informe borrador</strong> que requiere tu revisión:\n      </p>\n\n      <div class=\"report-box\">\n        <h3>${String(data.encabezado).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h3>\n        <div class=\"report-detail\">\n          <p><strong>Asunto:</strong> ${String(data.asunto || 'Sin asunto').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>\n          <p><strong>De:</strong> ${String(data.de || 'Sin remitente').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>\n          <p><strong>Para:</strong> ${String(data.para || 'Sin destinatario').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br>')}</p>\n          <p><strong>Fecha del Informe:</strong> ${fechaFormateada}</p>\n          <p><strong>ID de Auditoría:</strong> <code style=\"background: #e5e7eb; padding: 2px 6px; border-radius: 4px; font-size: 12px;\">${data.auditoria_id}</code></p>\n          <p><strong>ID de Informe:</strong> <code style=\"background: #e5e7eb; padding: 2px 6px; border-radius: 4px; font-size: 12px;\">${data.informe_id}</code></p>\n        </div>\n      </div>\n\n      <div style=\"text-align: center; margin: 30px 0; padding: 15px; background: #eff6ff; border-radius: 8px;\">\n        <p style=\"margin: 0; font-size: 16px; color: #2563eb;\">\n          <strong>📄 Informe pendiente de revisión.</strong>\n        </p>\n        <p style=\"margin: 10px 0 0 0; font-size: 14px; color: #6b7280;\">\n          Por favor, revisa el informe en el sistema y aprueba o solicita correcciones según corresponda.\n        </p>\n      </div>\n\n      <div style=\"text-align: center; margin: 30px 0;\">\n        <a href=\"http://localhost:3000/auditorias/${data.auditoria_id}/informe\" class=\"button\">\n          Revisar Informe en el Sistema\n        </a>\n      </div>\n\n      <p style=\"margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 13px;\">\n        <strong>Nota:</strong> Este es un correo automático del Sistema de Auditoría Interna.<br>\n        No responder a este mensaje.\n      </p>\n    </div>\n\n    <div class=\"footer\">\n      <p>\n        Sistema de Auditoría Interna<br>\n        Generado el ${new Date(data.timestamp).toLocaleDateString('es-ES', { \n          year: 'numeric', \n          month: 'long', \n          day: 'numeric',\n          hour: '2-digit',\n          minute: '2-digit'\n        })}<br>\n        © ${new Date().getFullYear()}\n      </p>\n    </div>\n  </div>\n</body>\n</html>`;\n\nreturn [{\n  json: {\n    ...data,\n    html: htmlTemplate\n  }\n}];"
+      },
+      "id": "code-002",
+      "name": "Code - Generar HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "toEmail": "={{ $json.auditor_interno_email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "gmail-001",
+      "name": "Gmail - Enviar Correo",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Recibir Solicitud": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code - Validar y Preparar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validar y Preparar": {
+      "main": [
+        [
+          {
+            "node": "Code - Generar HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generar HTML": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Enviar Correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-08T00:00:00.000Z",
+  "versionId": "1"
+}

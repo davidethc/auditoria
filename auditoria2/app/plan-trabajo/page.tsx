@@ -259,6 +259,7 @@ export default function PlanTrabajoPage() {
             year: act.year,
             auditor_id: act.auditor_id,
             auditor_name: auditor?.full_name || auditor?.email || null,
+            auditor_email: auditor?.email || null,
           };
         });
 

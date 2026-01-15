@@ -1,0 +1,296 @@
+{
+  "name": "Generar Word y Actualizar Matriz (Mejorado - Directo desde Supabase)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generar-word-informe",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook - Recibir Solicitud",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "generar-word-informe"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Solicitud recibida\", \"informe_id\": $json.body.informe_id } }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validar y extraer informe_id\nconst body = $input.item.json.body || $input.item.json;\n\nif (!body.informe_id) {\n  throw new Error('Falta informe_id en el request');\n}\n\nreturn [{\n  json: {\n    informe_id: body.informe_id\n  }\n}];"
+      },
+      "id": "code-validar",
+      "name": "Code - Validar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://ksnehijfwxtfbspqvdwq.supabase.co/rest/v1/auditoria_informe?id=eq.{{ $json.informe_id }}&select=*,auditoria:auditorias(id,estado)",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-obtener-informe",
+      "name": "HTTP Request - Obtener Informe de Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Obtener el informe del array de respuesta\nconst respuesta = $input.item.json;\nconst informe = Array.isArray(respuesta) ? respuesta[0] : respuesta;\n\nif (!informe || !informe.id) {\n  throw new Error('No se encontró el informe en Supabase');\n}\n\n// Obtener observaciones de la matriz si están en observaciones_enumeradas\nlet observacionesCompletas = [];\nif (informe.observaciones_enumeradas && Array.isArray(informe.observaciones_enumeradas)) {\n  observacionesCompletas = informe.observaciones_enumeradas;\n}\n\n// Inicializar objetos de usuario vacíos (se completarán si hay IDs)\ninforme.elaborado_por_user = informe.elaborado_por ? { id: informe.elaborado_por, full_name: null, email: '' } : null;\ninforme.revisado_por_user = informe.revisado_por ? { id: informe.revisado_por, full_name: null, email: '' } : null;\ninforme.aprobado_por_user = informe.aprobado_por ? { id: informe.aprobado_por, full_name: null, email: '' } : null;\n\nreturn [{\n  json: {\n    informe: informe,\n    informe_id: informe.id,\n    auditoria_id: informe.auditoria_id,\n    observaciones: observacionesCompletas\n  }\n}];"
+      },
+      "id": "code-preparar-informe",
+      "name": "Code - Preparar Datos Informe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generar contenido HTML del informe (formato Word)\nconst data = $json;\nconst informe = data.informe;\nconst observaciones = data.observaciones || [];\n\n// Formatear fechas\nconst formatearFecha = (fecha) => {\n  if (!fecha) return 'No definida';\n  try {\n    return new Date(fecha).toLocaleDateString('es-ES', {\n      year: 'numeric',\n      month: 'long',\n      day: 'numeric'\n    });\n  } catch {\n    return fecha;\n  }\n};\n\n// Generar HTML con formato de documento Word\nconst htmlContent = `\n<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    @page { margin: 2.5cm; }\n    body { \n      font-family: 'Times New Roman', serif; \n      font-size: 12pt; \n      line-height: 1.5; \n      color: #000; \n      margin: 0; \n      padding: 0;\n    }\n    h1 { \n      text-align: center; \n      border-bottom: 2px solid #000; \n      padding-bottom: 10px; \n      margin-bottom: 30px;\n      font-size: 16pt;\n      font-weight: bold;\n    }\n    h2 { \n      border-bottom: 1px solid #333; \n      padding-bottom: 5px; \n      margin-top: 25px;\n      margin-bottom: 15px;\n      font-size: 14pt;\n      font-weight: bold;\n    }\n    .header { \n      margin-bottom: 30px; \n      line-height: 1.8;\n    }\n    .header p { margin: 5px 0; }\n    .observacion { \n      margin: 20px 0; \n      padding: 15px; \n      border-left: 4px solid #2563eb; \n      background: #f9fafb;\n      page-break-inside: avoid;\n    }\n    .observacion h3 { margin-top: 0; color: #2563eb; }\n    .firma { margin-top: 40px; page-break-inside: avoid; }\n    .firma p { margin: 10px 0; }\n  </style>\n</head>\n<body>\n  <h1>${informe.encabezado || 'INFORME DE AUDITORÍA'}</h1>\n  \n  <div class=\"header\">\n    <p><strong>De:</strong> ${informe.de || 'No especificado'}</p>\n    <p><strong>Para:</strong> ${informe.para || 'No especificado'}</p>\n    <p><strong>Asunto:</strong> ${informe.asunto || 'No especificado'}</p>\n    <p><strong>Fecha:</strong> ${formatearFecha(informe.fecha_inicio_informe)}</p>\n  </div>\n  \n  ${informe.antecedentes ? `<h2>1. ANTECEDENTES</h2>\n  <p>${informe.antecedentes.replace(/\\n/g, '</p><p>')}</p>` : ''}\n  \n  ${informe.objetivos ? `<h2>2. OBJETIVOS</h2>\n  <p>${informe.objetivos.replace(/\\n/g, '</p><p>')}</p>` : ''}\n  \n  ${informe.alcance ? `<h2>3. ALCANCE</h2>\n  <p>${informe.alcance.replace(/\\n/g, '</p><p>')}</p>` : ''}\n  \n  ${informe.resultados_revision ? `<h2>4. RESULTADOS DE LA REVISIÓN</h2>\n  <p>${informe.resultados_revision.replace(/\\n/g, '</p><p>')}</p>` : ''}\n  \n  ${informe.metodologia_aplicada ? `<h2>5. METODOLOGÍA APLICADA</h2>\n  <p>${informe.metodologia_aplicada.replace(/\\n/g, '</p><p>')}</p>` : ''}\n  \n  ${observaciones.length > 0 ? `<h2>6. ${informe.titulo_observaciones || 'OBSERVACIONES'}</h2>\n  ${observaciones.map((obs, idx) => `\n    <div class=\"observacion\">\n      <h3>OBSERVACIÓN N° ${obs.numero || idx + 1}</h3>\n      ${obs.titulo ? `<p><strong>Título:</strong> ${obs.titulo}</p>` : ''}\n      ${obs.descripcion ? `<p><strong>Descripción:</strong> ${obs.descripcion.replace(/\\n/g, '</p><p>')}</p>` : ''}\n      ${obs.recomendacion ? `<p><strong>Recomendación:</strong> ${obs.recomendacion.replace(/\\n/g, '</p><p>')}</p>` : ''}\n    </div>\n  `).join('')}` : ''}\n  \n  ${informe.estrategia ? `<h2>7. ESTRATEGIA DE IMPLEMENTACIÓN</h2>\n  <p>${informe.estrategia.replace(/\\n/g, '</p><p>')}</p>\n  <p><strong>Fecha de inicio:</strong> ${formatearFecha(informe.fecha_inicio_implementacion)}</p>\n  <p><strong>Fecha de fin:</strong> ${formatearFecha(informe.fecha_fin_implementacion)}</p>\n  ${informe.entregable ? `<p><strong>Entregable:</strong> ${informe.entregable}</p>` : ''}` : ''}\n  \n  ${informe.conclusiones ? `<h2>8. CONCLUSIONES</h2>\n  <p>${informe.conclusiones.replace(/\\n/g, '</p><p>')}</p>` : ''}\n  \n  ${informe.recomendaciones_generales ? `<h2>9. RECOMENDACIONES GENERALES</h2>\n  <p>${informe.recomendaciones_generales.replace(/\\n/g, '</p><p>')}</p>` : ''}\n  \n  <div class=\"firma\">\n    <h2>FIRMAS</h2>\n    <p><strong>Elaborado por:</strong> ${informe.elaborado_por_user?.full_name || 'No especificado'}</p>\n    <p><strong>Fecha de elaboración:</strong> ${formatearFecha(informe.fecha_elaboracion)}</p>\n    ${informe.aprobado_por_user ? `<p><strong>Aprobado por:</strong> ${informe.aprobado_por_user.full_name}</p>\n    <p><strong>Fecha de aprobación:</strong> ${formatearFecha(informe.fecha_aprobacion)}</p>` : ''}\n  </div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    informe_id: informe.id,\n    auditoria_id: informe.auditoria_id,\n    contenido_html: htmlContent,\n    contenido: {\n      encabezado: informe.encabezado,\n      de: informe.de,\n      para: informe.para,\n      asunto: informe.asunto,\n      fecha_inicio: informe.fecha_inicio_informe,\n      observaciones_count: observaciones.length\n    }\n  }\n}];"
+      },
+      "id": "code-generar-html",
+      "name": "Code - Generar HTML (Formato Word)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar datos para crear Google Docs desde HTML\nconst data = $input.item.json;\nconst htmlContent = data.contenido_html;\n\nif (!htmlContent) {\n  throw new Error('No se encontró contenido_html para generar el documento');\n}\n\n// Generar nombre del documento\nconst nombreDocumento = `${data.contenido?.encabezado || 'Informe'}_${data.contenido?.fecha_inicio || 'SinFecha'}`;\n\n// Preparar HTML limpio (extraer solo el contenido del body)\nlet htmlLimpio = htmlContent;\n// Remover DOCTYPE y tags html/head/body si existen, mantener solo el contenido\nhtmlLimpio = htmlLimpio.replace(/<!DOCTYPE[^>]*>/gi, '');\nhtmlLimpio = htmlLimpio.replace(/<html[^>]*>/gi, '');\nhtmlLimpio = htmlLimpio.replace(/<\/html>/gi, '');\nhtmlLimpio = htmlLimpio.replace(/<head[^>]*>([\\s\\S]*?)<\\/head>/gi, '');\nhtmlLimpio = htmlLimpio.replace(/<body[^>]*>/gi, '');\nhtmlLimpio = htmlLimpio.replace(/<\\/body>/gi, '');\nhtmlLimpio = htmlLimpio.trim();\n\n// Convertir HTML a Buffer para subir como archivo\nconst htmlBuffer = Buffer.from(htmlLimpio, 'utf-8');\n\nreturn [{\n  json: {\n    ...data,\n    documento_generado: true,\n    nombre_documento: nombreDocumento,\n    contenido_html_limpio: htmlLimpio\n  },\n  binary: {\n    data: {\n      data: htmlBuffer.toString('base64'),\n      mimeType: 'text/html',\n      fileName: `${nombreDocumento}.html`\n    }\n  }\n}];"
+      },
+      "id": "code-convertir-word",
+      "name": "Code - Preparar HTML para Google Docs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "name": "={{ $('Code - Preparar HTML para Google Docs').item.json.nombre_documento }}",
+        "parents": {
+          "values": [
+            {
+              "value": "1QHoiXg2FMGy36OS3tfstLllhWDLvWbSL"
+            }
+          ]
+        },
+        "options": {
+          "appProperties": [],
+          "appPropertiesUi": {
+            "appPropertiesValues": []
+          },
+          "convert": true,
+          "ocr": false,
+          "ocrLanguage": "",
+          "pinned": false,
+          "shared": false,
+          "spaces": "drive",
+          "supportsAllDrives": true,
+          "useContentAsIndexableText": false
+        },
+        "binaryData": true,
+        "fileContent": "={{ $binary.data.data }}"
+      },
+      "id": "google-drive-upload",
+      "name": "Google Drive - Crear Google Docs desde HTML",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1780, 300],
+      "credentials": {
+        "googleApi": {
+          "id": "google-drive-credentials",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ksnehijfwxtfbspqvdwq.supabase.co/rest/v1/auditoria_informe?id=eq.{{ $('Code - Preparar Datos Informe').item.json.informe_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbmVoaWpmd3h0ZmJzcHF2ZHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTA4MjksImV4cCI6MjA4MTQyNjgyOX0.7jG1yXEue8u0exWxNlvVBMDMJPLIex5T7rsF3Ieo_dg"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"documento_word_url\": \"https://docs.google.com/document/d/\" + $('Google Drive - Crear Google Docs desde HTML').item.json.id + \"/edit\" } }}",
+        "options": {}
+      },
+      "id": "http-actualizar-word-url",
+      "name": "HTTP Request - Actualizar documento_word_url en Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar respuesta final\nconst resultado = {\n  success: true,\n  informe_id: $('Code - Preparar Datos Informe').item.json.informe_id,\n  documento_word_url: $('HTTP Request - Actualizar documento_word_url en Supabase').item.json[0]?.documento_word_url || null,\n  mensaje: 'Documento Word generado y guardado en Google Drive. La matriz se actualizará automáticamente cuando el informe cambie a estado COMPLETADO o ENVIADO_A_AUDITADOS (trigger automático).'\n};\n\nreturn [{\n  json: resultado\n}];"
+      },
+      "id": "code-resultado-final",
+      "name": "Code - Resultado Final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Recibir Solicitud": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code - Validar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validar": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Obtener Informe de Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Obtener Informe de Supabase": {
+      "main": [
+        [
+          {
+            "node": "Code - Preparar Datos Informe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Preparar Datos Informe": {
+      "main": [
+        [
+          {
+            "node": "Code - Generar HTML (Formato Word)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generar HTML (Formato Word)": {
+      "main": [
+        [
+          {
+            "node": "Code - Preparar HTML para Google Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Preparar HTML para Google Docs": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Crear Google Docs desde HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive - Crear Google Docs desde HTML": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Actualizar documento_word_url en Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Actualizar documento_word_url en Supabase": {
+      "main": [
+        [
+          {
+            "node": "Code - Resultado Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-16T00:00:00.000Z",
+  "versionId": "1"
+}
+

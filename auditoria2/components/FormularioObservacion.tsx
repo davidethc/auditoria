@@ -38,9 +38,7 @@ export function FormularioObservacion({
   const [riesgo, setRiesgo] = useState('');
   const [responsableEstrategia, setResponsableEstrategia] = useState('');
   const [responsableImplementacion, setResponsableImplementacion] = useState('');
-  const [fechaInicio, setFechaInicio] = useState('');
-  const [fechaFin, setFechaFin] = useState('');
-  const [plazoDias, setPlazoDias] = useState<number | null>(null);
+  // Las fechas de implementación las define el auditado en el informe, no aquí
 
   useEffect(() => {
     loadUsers();
@@ -56,9 +54,7 @@ export function FormularioObservacion({
       setRiesgo(observacion.riesgo || '');
       setResponsableEstrategia(observacion.responsable_estrategia || '');
       setResponsableImplementacion(observacion.responsable_implementacion || '');
-      setFechaInicio(observacion.fecha_inicio || '');
-      setFechaFin(observacion.fecha_fin || '');
-      setPlazoDias(observacion.plazo_dias_laborables || null);
+      // Las fechas de implementación las define el auditado en el informe, no aquí
     } else {
       // Obtener siguiente número de observación
       loadSiguienteNumero();
@@ -124,9 +120,10 @@ export function FormularioObservacion({
         auditor_id: currentUserId,
         responsable_estrategia: responsableEstrategia || null,
         responsable_implementacion: responsableImplementacion || null,
-        fecha_inicio: fechaInicio || null,
-        fecha_fin: fechaFin || null,
-        plazo_dias_laborables: plazoDias || null,
+        // Las fechas de implementación las define el auditado en el informe, no aquí
+        fecha_inicio: null,
+        fecha_fin: null,
+        plazo_dias_laborables: null,
         estado_observacion: 'NO_INICIADA',
       };
 
@@ -138,11 +135,47 @@ export function FormularioObservacion({
 
         if (updateError) throw updateError;
       } else {
-        const { error: insertError } = await supabase
+        const { data: nuevaObservacion, error: insertError } = await supabase
           .from('auditoria_observaciones')
-          .insert(dataToSave);
+          .insert(dataToSave)
+          .select()
+          .single();
 
         if (insertError) throw insertError;
+
+        // NOTIFICAR AL AUDITADO si hay responsable de implementación
+        if (nuevaObservacion && responsableImplementacion) {
+          try {
+            // Obtener datos del auditado
+            const { data: auditadoData } = await supabase
+              .from('users')
+              .select('id, email, full_name')
+              .eq('id', responsableImplementacion)
+              .maybeSingle();
+
+            if (auditadoData?.email) {
+              // Llamar API para notificar vía N8N
+              fetch('/api/notificar-auditado-observacion', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  observacion_id: nuevaObservacion.id,
+                  auditoria_id: auditoriaId,
+                  auditado_id: auditadoData.id,
+                  auditado_email: auditadoData.email,
+                  auditado_nombre: auditadoData.full_name || auditadoData.email,
+                }),
+              }).catch((error) => {
+                console.error('Error llamando webhook N8N (no crítico):', error);
+              });
+            }
+          } catch (notifError) {
+            console.error('Error notificando auditado (no crítico):', notifError);
+            // No lanzar error, solo loguear
+          }
+        }
       }
 
       onSuccess();
@@ -344,40 +377,13 @@ export function FormularioObservacion({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="text-sm font-medium mb-2 block">Fecha de Inicio</label>
-            <input
-              type="date"
-              value={fechaInicio}
-              onChange={(e) => setFechaInicio(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              disabled={isSaving}
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium mb-2 block">Fecha de Fin</label>
-            <input
-              type="date"
-              value={fechaFin}
-              onChange={(e) => setFechaFin(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              disabled={isSaving}
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium mb-2 block">Plazo (días hábiles)</label>
-            <input
-              type="number"
-              value={plazoDias || ''}
-              onChange={(e) => setPlazoDias(e.target.value ? parseInt(e.target.value) : null)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              min="1"
-              disabled={isSaving}
-            />
-          </div>
+        {/* NOTA: Las fechas de implementación las define el auditado en el informe, no aquí */}
+        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800 p-4">
+          <p className="text-sm text-blue-800 dark:text-blue-200">
+            <strong>ℹ️ Nota:</strong> Las fechas de inicio y fin de implementación las define el auditado 
+            cuando completa la estrategia en el informe (estado ENVIADO_A_AUDITADOS). 
+            El auditor solo asigna el responsable de implementación.
+          </p>
         </div>
 
         <div className="flex gap-2 justify-end">

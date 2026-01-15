@@ -88,12 +88,124 @@ export function EstrategiaForm({
 
       if (updateError) throw updateError;
 
+      // NOTIFICAR AL AUDITOR sobre las fechas de implementación asignadas
+      // IMPORTANTE: Notificar por CADA observación individual
+      try {
+        const { data: auditoriaData } = await supabase
+          .from('auditorias')
+          .select('id, auditor_responsable_id')
+          .eq('id', informe.auditoria_id)
+          .maybeSingle();
+
+        if (auditoriaData?.auditor_responsable_id) {
+          const { data: observacionesData } = await supabase
+            .from('auditoria_observaciones')
+            .select('id, numero_observacion, titulo_observacion, descripcion_observacion, responsable_implementacion')
+            .eq('auditoria_id', informe.auditoria_id);
+
+          // Obtener observaciones donde el usuario actual es responsable
+          const observacionesUsuario = observacionesData?.filter(
+            obs => obs.responsable_implementacion === currentUserId
+          ) || [];
+
+          if (observacionesUsuario.length > 0) {
+            const { data: { session } } = await supabase.auth.getSession();
+            const { data: currentUserData } = await supabase
+              .from('users')
+              .select('full_name, email')
+              .eq('id', currentUserId)
+              .maybeSingle();
+
+            // Obtener datos del auditor
+            const { data: auditorData } = await supabase
+              .from('users')
+              .select('id, email, full_name')
+              .eq('id', auditoriaData.auditor_responsable_id)
+              .maybeSingle();
+
+            // NOTIFICAR POR CADA OBSERVACIÓN INDIVIDUAL
+            for (const observacion of observacionesUsuario) {
+              // Crear comunicación en BD
+              await supabase
+                .from('comunicaciones_auditado')
+                .insert({
+                  auditoria_id: informe.auditoria_id,
+                  destinatario_id: auditoriaData.auditor_responsable_id,
+                  tipo_comunicacion: 'NOTIFICACION',
+                  asunto: `Fechas de implementación asignadas - Observación #${observacion.numero_observacion}`,
+                  mensaje: `El auditado ${currentUserData?.full_name || currentUserData?.email || 'Usuario'} ha asignado fechas de implementación para la siguiente observación:\n\nOBSERVACIÓN #${observacion.numero_observacion}\nTítulo: ${observacion.titulo_observacion}\nDescripción: ${observacion.descripcion_observacion}\n\nFECHA DE INICIO: ${new Date(fechaInicio).toLocaleDateString('es-ES')}\nFECHA DE FIN: ${new Date(fechaFin).toLocaleDateString('es-ES')}\n\nEstrategia:\n${estrategia}\n\nEntregable: ${entregable}`,
+                  metodo_envio: 'SISTEMA',
+                  enviado_por: session?.user.id || null,
+                  confirmado: false,
+                });
+
+              // NOTIFICAR AL AUDITOR (el auditado le informa que asignó fechas)
+              if (auditorData?.email) {
+                fetch('/api/notificar-auditor-fechas-implementacion', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    observacion_id: observacion.id,
+                    auditoria_id: informe.auditoria_id,
+                    auditor_id: auditoriaData.auditor_responsable_id,
+                    auditor_email: auditorData.email,
+                    auditor_nombre: auditorData.full_name || auditorData.email,
+                    observacion_numero: observacion.numero_observacion,
+                    observacion_titulo: observacion.titulo_observacion,
+                    observacion_descripcion: observacion.descripcion_observacion,
+                    fecha_inicio,
+                    fecha_fin,
+                    estrategia,
+                    entregable,
+                    auditado_nombre: currentUserData?.full_name || currentUserData?.email || 'Usuario',
+                    auditado_email: currentUserData?.email || null,
+                  }),
+                }).catch((error) => {
+                  console.error('Error llamando webhook N8N al auditor (no crítico):', error);
+                });
+              }
+
+              // NOTIFICAR AL AUDITADO (confirmación de fechas asignadas)
+              if (currentUserData?.email) {
+                fetch('/api/notificar-auditado-fechas-asignadas', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    observacion_id: observacion.id,
+                    auditoria_id: informe.auditoria_id,
+                    auditado_id: currentUserId,
+                    auditado_email: currentUserData.email,
+                    auditado_nombre: currentUserData.full_name || currentUserData.email,
+                    observacion_numero: observacion.numero_observacion,
+                    observacion_titulo: observacion.titulo_observacion,
+                    observacion_descripcion: observacion.descripcion_observacion,
+                    fecha_inicio,
+                    fecha_fin,
+                    estrategia,
+                    entregable,
+                  }),
+                }).catch((error) => {
+                  console.error('Error llamando webhook N8N al auditado (no crítico):', error);
+                });
+              }
+            }
+          }
+        }
+      } catch (notifError) {
+        console.error('Error notificando al auditor (no crítico):', notifError);
+        // No lanzar error, solo loguear
+      }
+
       // Verificar si todos los auditados han respondido
       // (esto se puede hacer verificando si todos los participantes han completado)
       // Por ahora, solo actualizamos el informe
 
       onSuccess();
-      alert('✅ Estrategia guardada exitosamente');
+      alert('✅ Estrategia guardada exitosamente. El auditor ha sido notificado de las fechas asignadas.');
     } catch (err) {
       console.error('Error guardando estrategia:', err);
       setError('Error al guardar la estrategia');
