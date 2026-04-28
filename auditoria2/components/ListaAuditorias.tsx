@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/utils/supabase';
 import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/ui/loader';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { 
@@ -22,6 +24,9 @@ import type { LucideIcon } from 'lucide-react';
 
 interface ListaAuditoriasProps {
   userId: string;
+  mode?: 'todas' | 'creadas' | 'asignadas';
+  selectedAuditoriaId?: string | null;
+  onSelectAuditoria?: (auditoria: Auditoria) => void;
 }
 
 const estadoConfig: Record<string, { label: string; variant: 'default' | 'destructive' | 'secondary' | 'outline'; icon: LucideIcon }> = {
@@ -32,7 +37,12 @@ const estadoConfig: Record<string, { label: string; variant: 'default' | 'destru
   CERRADA: { label: 'Cerrada', variant: 'secondary', icon: CheckCircle2 },
 };
 
-export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
+export function ListaAuditorias({
+  userId,
+  mode = 'todas',
+  selectedAuditoriaId,
+  onSelectAuditoria,
+}: ListaAuditoriasProps) {
   const router = useRouter();
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,8 +67,15 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
         return;
       }
 
+      const filteredAuditoriasData = auditoriasData.filter((a) => {
+        if (mode === 'todas') return true;
+        if (mode === 'creadas') return a.creada_por === userId;
+        // asignadas: creadas por otra persona o null (legacy)
+        return a.creada_por !== userId;
+      });
+
       // Obtener IDs únicos de actividades
-      const activityIds = [...new Set(auditoriasData.map(a => a.activity_id).filter(Boolean))];
+      const activityIds = [...new Set(filteredAuditoriasData.map(a => a.activity_id).filter(Boolean))];
 
       // Cargar actividades por separado
       let activitiesMap: Record<string, any> = {};
@@ -77,7 +94,7 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
       }
 
       // Combinar datos
-      const auditoriasWithActivity = auditoriasData.map(auditoria => ({
+      const auditoriasWithActivity = filteredAuditoriasData.map(auditoria => ({
         ...auditoria,
         activity: activitiesMap[auditoria.activity_id] || null,
       }));
@@ -89,7 +106,7 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [userId]);
+  }, [userId, mode]);
 
   useEffect(() => {
     loadAuditorias();
@@ -131,19 +148,37 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
       <div className="rounded-lg border bg-card p-8 text-center">
         <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
         <p className="text-sm text-muted-foreground">
-          No has creado ninguna auditoría aún.
+          {mode === 'creadas'
+            ? 'No has creado ninguna auditoría aún.'
+            : mode === 'asignadas'
+              ? 'No tienes auditorías asignadas aún.'
+              : 'No hay auditorías para mostrar.'}
         </p>
-        <p className="text-xs text-muted-foreground mt-2">
-          Crea una auditoría desde una actividad asignada
-        </p>
+        {mode === 'creadas' && (
+          <p className="text-xs text-muted-foreground mt-2">
+            Crea una auditoría desde una actividad asignada
+          </p>
+        )}
       </div>
     );
   }
 
+  const handleOpen = (auditoria: Auditoria) => {
+    if (onSelectAuditoria) return onSelectAuditoria(auditoria);
+    router.push(`/auditorias/${auditoria.id}`);
+  };
+
+  const handleNavigate = (e: React.MouseEvent, auditoria: Auditoria) => {
+    e.stopPropagation();
+    router.push(`/auditorias/${auditoria.id}`);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Mis Auditorías</h3>
+        <h3 className="text-lg font-semibold">
+          {mode === 'creadas' ? 'Mis Auditorías' : mode === 'asignadas' ? 'Auditorías Asignadas' : 'Auditorías'}
+        </h3>
         <Badge variant="secondary">{auditorias.length} auditoría{auditorias.length !== 1 ? 's' : ''}</Badge>
       </div>
 
@@ -163,8 +198,11 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
           return (
             <div
               key={auditoria.id}
-              className="rounded-lg border bg-card p-6 transition-all hover:shadow-md cursor-pointer"
-              onClick={() => router.push(`/auditorias/${auditoria.id}`)}
+              className={cn(
+                "rounded-lg border bg-card p-6 transition-all hover:shadow-md cursor-pointer",
+                selectedAuditoriaId === auditoria.id && "border-primary/50 ring-1 ring-primary/15 bg-primary/5"
+              )}
+              onClick={() => handleOpen(auditoria)}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 space-y-3">
@@ -205,7 +243,19 @@ export function ListaAuditorias({ userId }: ListaAuditoriasProps) {
                   </div>
                 </div>
 
-                <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                <div className="flex items-center gap-2">
+                  {onSelectAuditoria ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={(e) => handleNavigate(e, auditoria)}
+                    >
+                      Abrir
+                    </Button>
+                  ) : null}
+                  <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                </div>
               </div>
             </div>
           );

@@ -9,10 +9,6 @@ import {
   LayoutDashboard,
   FileText,
   Settings,
-  Users,
-  BarChart3,
-  Calendar,
-  Folder,
   Shield,
   ChevronLeft,
   ChevronRight,
@@ -62,26 +58,6 @@ const navItems: NavItem[] = [
     icon: FileText,
   },
   {
-    title: 'Calendar',
-    href: '/calendar',
-    icon: Calendar,
-  },
-  {
-    title: 'Projects',
-    href: '/projects',
-    icon: Folder,
-  },
-  {
-    title: 'Analytics',
-    href: '/analytics',
-    icon: BarChart3,
-  },
-  {
-    title: 'Team',
-    href: '/team',
-    icon: Users,
-  },
-  {
     title: 'Guía de Flujos',
     href: '/guia-flujos',
     icon: ClipboardList,
@@ -110,6 +86,12 @@ const navItems: NavItem[] = [
     requiresRole: 'auditor_interno',
   },
 ];
+
+const roleDisplayName: Record<UserRole, string> = {
+  auditor_interno: 'Auditor Interno',
+  auditor: 'Auditor',
+  auditado: 'Auditado',
+};
 
 export default function Sidebar() {
   const { user } = useAuth();
@@ -207,7 +189,9 @@ export default function Sidebar() {
           isCollapsed && "opacity-0 pointer-events-none"
         )}>
           <div className="px-6 py-4 border-b flex items-center justify-between">
-            <h2 className="text-xl font-bold text-foreground">Auditoría</h2>
+            <h2 className="text-xl font-bold text-destructive">
+              {userRole ? roleDisplayName[userRole] : 'Usuario'}
+            </h2>
             <Button
               variant="ghost"
               size="icon"
@@ -235,7 +219,7 @@ export default function Sidebar() {
                       variant={isActive ? "secondary" : "ghost"}
                       className={cn(
                         "w-full justify-start gap-3",
-                        isActive && "bg-secondary font-medium"
+                        isActive && "bg-primary/10 text-primary hover:bg-primary/15 font-medium"
                       )}
                     >
                       <Icon className="h-5 w-5" />
@@ -253,8 +237,8 @@ export default function Sidebar() {
           </nav>
 
           <div className="px-4 py-4 border-t">
-            <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-muted">
-              <div className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-semibold text-sm">
+            <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-muted/60 border border-border/60">
+              <div className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-semibold text-sm shadow-sm">
                 {user.email?.[0].toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">

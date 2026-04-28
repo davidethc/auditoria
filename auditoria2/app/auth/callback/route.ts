@@ -10,7 +10,13 @@ export async function GET(request: Request) {
 
   if (code) {
     console.log('AuthCallback: Exchanging code for session');
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createRouteHandlerClient(
+      { cookies },
+      {
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+        supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      }
+    );
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     
     if (error) {

@@ -30,10 +30,10 @@ export default function TopBar() {
   if (!user) return null;
 
   return (
-    <div className="w-full bg-card border-b border-border p-4">
+    <div className="w-full bg-card/80 backdrop-blur border-b border-border p-4">
       <div className="max-w-7xl mx-auto flex justify-between items-center">
-        <Link href="/" className="text-xl font-bold text-foreground hover:text-primary transition-colors">
-          Your App Name
+        <Link href="/" className="text-xl font-semibold tracking-tight text-foreground hover:text-primary transition-colors">
+          Sistema de Auditoría
         </Link>
 
         <div className="flex items-center gap-4">
@@ -57,7 +57,7 @@ export default function TopBar() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-primary/10 text-primary rounded-full flex items-center justify-center font-semibold">
+                <div className="w-8 h-8 bg-primary/10 text-primary rounded-full flex items-center justify-center font-semibold ring-1 ring-primary/15">
                   {user.email?.[0].toUpperCase()}
                 </div>
                 <span className="hidden sm:inline text-foreground">{user.email}</span>

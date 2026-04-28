@@ -39,7 +39,11 @@ export default function LoginPage() {
         
         router.replace('/');
       } else {
-        await signInWithEmail(email, password);
+        const { data, error } = await signInWithEmail(email, password);
+        if (error) throw error;
+        if (!data?.session) {
+          throw new Error('No se pudo iniciar sesión correctamente');
+        }
         router.replace('/');
       }
     } catch (error) {

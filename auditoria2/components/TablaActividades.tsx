@@ -3,9 +3,12 @@
 import { SelectResponsable } from '@/components/SelectResponsable';
 import { SelectValidacion } from '@/components/SelectValidacion';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 type UserRole = 'auditado' | 'auditor' | 'auditor_interno';
 
@@ -50,6 +53,16 @@ export function TablaActividades({
   // auditado: NO puede cambiar nada
   const canEditResponsable = userRole === 'auditor_interno';
   const canEditValidacion = userRole === 'auditor_interno' || userRole === 'auditor';
+
+  const pageSize = 5;
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(activities.length / pageSize));
+  const safePage = Math.min(Math.max(page, 1), pageCount);
+
+  const pagedActivities = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return activities.slice(start, start + pageSize);
+  }, [activities, safePage]);
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
@@ -114,47 +127,80 @@ export function TablaActividades({
 
   return (
     <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b bg-card/60 px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">Actividades</p>
+          <p className="text-xs text-muted-foreground">
+            Mostrando {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, activities.length)} de {activities.length}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={safePage <= 1}
+            aria-label="Página anterior"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="text-xs text-muted-foreground tabular-nums px-2">
+            Página <span className="text-foreground font-medium">{safePage}</span> / {pageCount}
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+            disabled={safePage >= pageCount}
+            aria-label="Página siguiente"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
       <div className="overflow-x-auto">
-        <table className="w-full caption-bottom text-sm">
-          <thead className="bg-muted/50 border-b">
+        <div className="max-h-[65vh] overflow-y-auto">
+          <table className="w-full caption-bottom text-sm">
+            <thead className="sticky top-0 z-10 bg-secondary/70 backdrop-blur border-b shadow-sm">
             <tr>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-16">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90 w-16">
                 N°
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground min-w-[300px]">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90 min-w-[300px]">
                 Actividad
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground min-w-[200px]">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90 min-w-[200px]">
                 Tipo de Actividad
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground min-w-[150px]">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90 min-w-[150px]">
                 Normativa
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
                 Componente
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
                 Subcomponente
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
                 Prioridad
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
                 Fecha Inicio
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
                 Fecha Fin
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground min-w-[200px]">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90 min-w-[200px]">
                 Responsable
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground min-w-[180px]">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90 min-w-[180px]">
                 Validación
               </th>
             </tr>
           </thead>
           <tbody>
-            {activities.map((activity) => (
+            {pagedActivities.map((activity) => (
               <tr key={activity.id} className="border-b transition-colors hover:bg-muted/50">
                 <td className="p-4 align-middle">
                   <span className="font-medium">{activity.activity_number}</span>
@@ -254,7 +300,8 @@ export function TablaActividades({
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
     </div>
   );

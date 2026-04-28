@@ -10,6 +10,9 @@ import { CrearAuditoriaModal } from '@/components/CrearAuditoriaModal';
 import { ListaAuditorias } from '@/components/ListaAuditorias';
 import { ListaAuditoriasParticipante } from '@/components/ListaAuditoriasParticipante';
 import type { AuditActivity } from '@/components/TablaActividades';
+import type { Auditoria } from '@/types/auditorias';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 type UserRole = 'auditado' | 'auditor' | 'auditor_interno';
 
@@ -19,6 +22,8 @@ export default function AuditoriasPage() {
   const [isCheckingRole, setIsCheckingRole] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<AuditActivity | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedAuditoria, setSelectedAuditoria] = useState<Auditoria | null>(null);
+  const [auditorTab, setAuditorTab] = useState<'asignadas' | 'proceso'>('asignadas');
 
   // Verificar rol del usuario
   useEffect(() => {
@@ -137,26 +142,152 @@ export default function AuditoriasPage() {
         </div>
       </div>
 
-      {/* Tabs o secciones */}
+      {/* Secciones */}
       <div className="grid gap-6">
-        {/* Sección: Actividades asignadas */}
-        <section>
-          <h2 className="text-lg font-semibold mb-4">Actividades Asignadas</h2>
-          <ListaActividadesAuditor
-            key={`activities-${refreshKey}`}
-            onCrearAuditoria={handleCrearAuditoria}
-            userId={user.id}
-          />
-        </section>
+        {/* Vista específica para AUDITOR: 2 secciones */}
+        {userRole === 'auditor' ? (
+          <>
+            <section>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h2 className="text-lg font-semibold">Mis Auditorías (Auditor)</h2>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={auditorTab === 'asignadas' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setAuditorTab('asignadas')}
+                  >
+                    Auditorías Asignadas
+                  </Button>
+                  <Button
+                    variant={auditorTab === 'proceso' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setAuditorTab('proceso')}
+                    disabled={!selectedAuditoria}
+                    title={!selectedAuditoria ? 'Selecciona una auditoría primero' : undefined}
+                  >
+                    Proceso de Auditoría
+                  </Button>
+                </div>
+              </div>
 
-        {/* Sección: Auditorías creadas */}
-        <section>
-          <h2 className="text-lg font-semibold mb-4">Auditorías Creadas</h2>
-          <ListaAuditorias
-            key={`auditorias-${refreshKey}`}
-            userId={user.id}
-          />
-        </section>
+              {auditorTab === 'asignadas' ? (
+                <ListaAuditorias
+                  key={`auditorias-asignadas-${refreshKey}`}
+                  userId={user.id}
+                  mode="todas"
+                  selectedAuditoriaId={selectedAuditoria?.id ?? null}
+                  onSelectAuditoria={(aud) => {
+                    setSelectedAuditoria(aud);
+                    setAuditorTab('proceso');
+                  }}
+                />
+              ) : null}
+            </section>
+
+            {auditorTab === 'proceso' ? (
+              <section>
+                <h2 className="text-lg font-semibold mb-4">Proceso de Auditoría</h2>
+              <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
+                <div className="border-b bg-card/60 px-4 py-3">
+                  <p className="text-sm font-medium text-foreground">
+                    {selectedAuditoria
+                      ? `Auditoría seleccionada`
+                      : 'Selecciona una auditoría asignada'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {selectedAuditoria
+                      ? `ID: ${selectedAuditoria.id}`
+                      : 'Haz clic en una auditoría para ver su avance por etapas.'}
+                  </p>
+                </div>
+
+                <div className="p-4">
+                  {selectedAuditoria ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Estado actual:</span>
+                        <Badge variant="secondary">{selectedAuditoria.estado}</Badge>
+                      </div>
+
+                      <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        {([
+                          { key: 'PLANIFICADA', label: 'Planificación' },
+                          { key: 'EN_PREPARACION', label: 'Preparación' },
+                          { key: 'EN_EJECUCION', label: 'Ejecución' },
+                          { key: 'EN_REPORTE', label: 'Reporte' },
+                          { key: 'CERRADA', label: 'Cierre' },
+                        ] as const).map((step) => {
+                          const order: Record<string, number> = {
+                            PLANIFICADA: 1,
+                            EN_PREPARACION: 2,
+                            EN_EJECUCION: 3,
+                            EN_REPORTE: 4,
+                            CERRADA: 5,
+                          };
+                          const current = order[selectedAuditoria.estado] ?? 1;
+                          const idx = order[step.key];
+                          const status =
+                            idx < current ? 'done' : idx === current ? 'current' : 'todo';
+
+                          return (
+                            <li
+                              key={step.key}
+                              className={[
+                                'rounded-lg border p-3',
+                                status === 'done' ? 'bg-primary/5 border-primary/20' : '',
+                                status === 'current' ? 'bg-accent/60 border-primary/30 ring-1 ring-primary/10' : '',
+                              ].join(' ')}
+                            >
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                {step.label}
+                              </p>
+                              <p className="text-sm font-medium text-foreground mt-1">
+                                {status === 'done'
+                                  ? 'Completado'
+                                  : status === 'current'
+                                    ? 'En curso'
+                                    : 'Pendiente'}
+                              </p>
+                            </li>
+                          );
+                        })}
+                      </ol>
+
+                      <p className="text-xs text-muted-foreground">
+                        Para trabajar la auditoría, vuelve a “Auditorías Asignadas” y presiona “Abrir”, o navega al detalle desde la lista.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      No hay auditoría seleccionada.
+                    </div>
+                  )}
+                </div>
+              </div>
+              </section>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {/* Vista actual para AUDITOR INTERNO */}
+            <section>
+              <h2 className="text-lg font-semibold mb-4">Actividades Asignadas</h2>
+              <ListaActividadesAuditor
+                key={`activities-${refreshKey}`}
+                onCrearAuditoria={handleCrearAuditoria}
+                userId={user.id}
+              />
+            </section>
+
+            <section>
+              <h2 className="text-lg font-semibold mb-4">Auditorías Creadas</h2>
+              <ListaAuditorias
+                key={`auditorias-${refreshKey}`}
+                userId={user.id}
+              />
+            </section>
+          </>
+        )}
       </div>
 
       {/* Modal para crear auditoría */}

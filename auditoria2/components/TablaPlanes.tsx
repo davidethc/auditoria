@@ -48,15 +48,15 @@ export function TablaPlanes({
     <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full caption-bottom text-sm">
-          <thead className="bg-muted/50 border-b">
+          <thead className="sticky top-0 z-10 bg-secondary/70 backdrop-blur border-b shadow-sm">
             <tr>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
                 Año
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
                 Tipo de Plan
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+              <th className="h-11 px-4 text-left align-middle text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
                 Descripción
               </th>
             </tr>

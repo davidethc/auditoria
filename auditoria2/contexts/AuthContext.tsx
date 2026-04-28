@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@/utils/supabase';
+import { supabase, isSupabaseConfigured } from '@/utils/supabase';
 import { 
   Session, 
   User, 
@@ -36,18 +36,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Initial session check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    if (!isSupabaseConfigured) {
       setIsLoading(false);
-    });
+      return;
+    }
 
-    // Listen for auth changes
+    // Initial session check
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setIsLoading(false);
+      })
+      .catch(() => {
+        setIsLoading(false);
+      });
+
+    // Listen for auth changes - use setTimeout to avoid deadlock bug (#762)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setIsLoading(false);
+      setTimeout(() => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setIsLoading(false);
+      }, 0);
     });
 
     return () => subscription.unsubscribe();
@@ -59,6 +70,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     supabase,
     signInWithGoogle: async () => {
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase no está configurado');
+      }
       await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -67,6 +81,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     },
     signInWithEmail: async (email: string, password: string) => {
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase no está configurado');
+      }
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password
@@ -74,30 +91,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (authError) throw authError;
 
-      // Check if user was previously soft-deleted
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('is_deleted, deleted_at')
-        .eq('id', authData.user?.id)
-        .single();
-
-      if (profile?.is_deleted) {
-        // Reactivate the account
-        await supabase
-          .from('profiles')
-          .update({ 
-            is_deleted: false, 
-            deleted_at: null,
-            reactivated_at: new Date().toISOString() 
-          })
-          .eq('id', authData.user?.id);
-
-        // You could trigger a welcome back notification here
+      if (authData?.session) {
+        setSession(authData.session);
+        setUser(authData.user ?? null);
       }
 
-      return authData;
+      await supabase
+        .from('profiles')
+        .upsert({
+          id: authData.user?.id,
+          email: authData.user?.email,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
     },
     signOut: async () => {
+      if (!isSupabaseConfigured) {
+        setUser(null);
+        setSession(null);
+        window.location.href = '/login';
+        return;
+      }
+
       try {
         // First check if we have a session
         const { data: { session } } = await supabase.auth.getSession();
@@ -121,6 +135,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     },
     signUpWithEmail: async (email: string, password: string) => {
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase no está configurado');
+      }
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -132,18 +149,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { data, error };
     },
     updatePassword: async (newPassword: string) => {
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase no está configurado');
+      }
       const { error } = await supabase.auth.updateUser({
         password: newPassword
       });
       if (error) throw error;
     },
     updateEmail: async (newEmail: string) => {
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase no está configurado');
+      }
       const { error } = await supabase.auth.updateUser({
         email: newEmail
       });
       if (error) throw error;
     },
     resetPassword: async (email: string) => {
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase no está configurado');
+      }
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/update-password`
       });
