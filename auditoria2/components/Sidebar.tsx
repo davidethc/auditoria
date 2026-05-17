@@ -14,6 +14,8 @@ import {
   ChevronRight,
   ClipboardList,
   FileCheck,
+  ChevronDown,
+  ChevronRight as ChevronRightIcon,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useSidebar } from '@/contexts/SidebarContext';
@@ -23,10 +25,11 @@ type UserRole = 'auditado' | 'auditor' | 'auditor_interno';
 
 interface NavItem {
   title: string;
-  href: string;
+  href?: string;
   icon: React.ComponentType<{ className?: string }>;
   badge?: string | number;
   requiresRole?: UserRole;
+  children?: NavItem[];
 }
 
 const navItems: NavItem[] = [
@@ -42,9 +45,45 @@ const navItems: NavItem[] = [
   },
   {
     title: 'Mis Auditorías',
-    href: '/auditorias',
     icon: FileText,
-    // Permitir a auditores y auditores internos
+    children: [
+      {
+        title: 'Auditorías',
+        href: '/auditorias?view=auditorias',
+        icon: FileText,
+      },
+      {
+        title: 'Proceso',
+        icon: ClipboardList,
+        children: [
+          {
+            title: 'Planificada',
+            href: '/auditorias?view=proceso&stage=PLANIFICADA',
+            icon: FileCheck,
+          },
+          {
+            title: 'En Preparación',
+            href: '/auditorias?view=proceso&stage=EN_PREPARACION',
+            icon: FileCheck,
+          },
+          {
+            title: 'En Ejecución',
+            href: '/auditorias?view=proceso&stage=EN_EJECUCION',
+            icon: FileCheck,
+          },
+          {
+            title: 'En Reporte',
+            href: '/auditorias?view=proceso&stage=EN_REPORTE',
+            icon: FileCheck,
+          },
+          {
+            title: 'Cerrada',
+            href: '/auditorias?view=proceso&stage=CERRADA',
+            icon: FileCheck,
+          },
+        ],
+      },
+    ],
   },
   {
     title: 'Historial de Hallazgos',
@@ -98,6 +137,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { isCollapsed, toggleCollapse } = useSidebar();
   const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [isLoadingRole, setIsLoadingRole] = useState(true);
 
   // Check if we're on a public route
@@ -166,6 +206,77 @@ export default function Sidebar() {
     loadRole();
   }, [user]);
 
+  // Función para renderizar items de navegación recursivamente
+  const renderNavItem = (item: NavItem, level: number = 0) => {
+    const Icon = item.icon;
+    const isActive = item.href && pathname === item.href.split('?')[0]; // Check base path
+    const hasChildren = item.children && item.children.length > 0;
+    const isExpanded = expanded.has(item.title);
+
+    const handleClick = () => {
+      if (hasChildren) {
+        setExpanded(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(item.title)) {
+            newSet.delete(item.title);
+          } else {
+            newSet.add(item.title);
+          }
+          return newSet;
+        });
+      }
+    };
+
+    return (
+      <div key={item.title}>
+        {item.href ? (
+          <Link href={item.href}>
+            <Button
+              variant={isActive ? "secondary" : "ghost"}
+              className={cn(
+                "w-full justify-start gap-3",
+                isActive && "bg-primary/10 text-primary hover:bg-primary/15 font-medium",
+                level > 0 && "ml-6"
+              )}
+              onClick={hasChildren ? handleClick : undefined}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="flex-1 text-left">{item.title}</span>
+              {hasChildren && (
+                isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />
+              )}
+              {item.badge && (
+                <span className="ml-auto bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full">
+                  {item.badge}
+                </span>
+              )}
+            </Button>
+          </Link>
+        ) : (
+          <Button
+            variant="ghost"
+            className={cn(
+              "w-full justify-start gap-3",
+              level > 0 && "ml-6"
+            )}
+            onClick={handleClick}
+          >
+            <Icon className="h-5 w-5" />
+            <span className="flex-1 text-left">{item.title}</span>
+            {hasChildren && (
+              isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />
+            )}
+          </Button>
+        )}
+        {hasChildren && isExpanded && (
+          <div className="ml-4">
+            {item.children!.map(child => renderNavItem(child, level + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Filtrar items de navegación según el rol
   const filteredNavItems = navItems.filter((item) => {
     if (!item.requiresRole) return true;
@@ -209,30 +320,7 @@ export default function Sidebar() {
                 <div className="text-sm text-muted-foreground">Cargando...</div>
               </div>
             ) : (
-              filteredNavItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname === item.href;
-
-                return (
-                  <Link key={item.href} href={item.href}>
-                    <Button
-                      variant={isActive ? "secondary" : "ghost"}
-                      className={cn(
-                        "w-full justify-start gap-3",
-                        isActive && "bg-primary/10 text-primary hover:bg-primary/15 font-medium"
-                      )}
-                    >
-                      <Icon className="h-5 w-5" />
-                      <span className="flex-1 text-left">{item.title}</span>
-                      {item.badge && (
-                        <span className="ml-auto bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full">
-                          {item.badge}
-                        </span>
-                      )}
-                    </Button>
-                  </Link>
-                );
-              })
+              filteredNavItems.map((item) => renderNavItem(item))
             )}
           </nav>
 

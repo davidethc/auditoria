@@ -64,9 +64,15 @@ interface AuditoriaData {
 
 interface ListaAuditoriasParticipanteProps {
   userId: string;
+  grouped?: boolean;
+  stageFilter?: AuditoriaEstado | null;
 }
 
-const estadoConfig: Record<string, { label: string; variant: 'default' | 'destructive' | 'secondary' | 'outline'; icon: LucideIcon }> = {
+const estadoOrder = ['PLANIFICADA', 'EN_PREPARACION', 'EN_EJECUCION', 'EN_REPORTE', 'CERRADA'] as const;
+
+type AuditoriaEstado = (typeof estadoOrder)[number];
+
+const estadoConfig: Record<AuditoriaEstado, { label: string; variant: 'default' | 'destructive' | 'secondary' | 'outline'; icon: LucideIcon }> = {
   PLANIFICADA: { label: 'Planificada', variant: 'outline', icon: Clock },
   EN_PREPARACION: { label: 'En Preparación', variant: 'secondary', icon: FileText },
   EN_EJECUCION: { label: 'En Ejecución', variant: 'default', icon: Play },
@@ -81,7 +87,7 @@ const estadoParticipacionConfig: Record<string, { label: string; variant: 'defau
   RECHAZADO: { label: 'Rechazado', variant: 'destructive' },
 };
 
-export function ListaAuditoriasParticipante({ userId }: ListaAuditoriasParticipanteProps) {
+export function ListaAuditoriasParticipante({ userId, grouped = true, stageFilter = null }: ListaAuditoriasParticipanteProps) {
   const router = useRouter();
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -202,6 +208,62 @@ export function ListaAuditoriasParticipante({ userId }: ListaAuditoriasParticipa
     }
   };
 
+  const renderAuditoriaCard = (auditoria: Auditoria) => {
+    const config = estadoConfig[auditoria.estado as AuditoriaEstado] || estadoConfig.PLANIFICADA;
+    const EstadoIcon = config.icon;
+    const activity = auditoria.activity;
+    const estadoParticipacion = estadoParticipacionConfig[auditoria.estado_participacion] || estadoParticipacionConfig.PENDIENTE;
+
+    return (
+      <div
+        key={auditoria.id}
+        className="rounded-lg border bg-card p-6 transition-all hover:shadow-md cursor-pointer"
+        onClick={() => router.push(`/auditorias/${auditoria.id}`)}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 space-y-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Badge variant={config.variant} className="gap-1.5">
+                <EstadoIcon className="h-3 w-3" />
+                {config.label}
+              </Badge>
+              <Badge variant="outline">{auditoria.rol_en_auditoria}</Badge>
+              <Badge variant={estadoParticipacion.variant}>{estadoParticipacion.label}</Badge>
+              {activity && (
+                <span className="text-sm text-muted-foreground">
+                  Actividad #{activity.activity_number}
+                </span>
+              )}
+            </div>
+
+            {activity && (
+              <p className="text-sm text-foreground font-medium">
+                {activity.activity_description}
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+              {auditoria.fecha_inicio && (
+                <div className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  <span>Inicio: {formatDate(auditoria.fecha_inicio)}</span>
+                </div>
+              )}
+              {auditoria.fecha_fin && (
+                <div className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  <span>Fin: {formatDate(auditoria.fecha_fin)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -238,69 +300,67 @@ export function ListaAuditoriasParticipante({ userId }: ListaAuditoriasParticipa
     );
   }
 
+  const groupedAuditorias = estadoOrder.reduce((acc, estado) => {
+    acc[estado] = auditorias.filter((auditoria) => auditoria.estado === estado);
+    return acc;
+  }, {} as Record<AuditoriaEstado, Auditoria[]>);
+
+  // Filter by stage if specified
+  const filteredAuditorias = stageFilter ? auditorias.filter(a => a.estado === stageFilter) : auditorias;
+
+  const hasGroupedAuditorias = grouped && Object.values(groupedAuditorias).some((group) => group.length > 0);
+  const hasFilteredAuditorias = filteredAuditorias.length > 0;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <Badge variant="secondary">{auditorias.length} auditoría{auditorias.length !== 1 ? 's' : ''}</Badge>
       </div>
 
-      <div className="grid gap-4">
-        {auditorias.map((auditoria) => {
-          const config = estadoConfig[auditoria.estado] || estadoConfig.PLANIFICADA;
-          const EstadoIcon = config.icon;
-          const activity = auditoria.activity;
-          const estadoParticipacion = estadoParticipacionConfig[auditoria.estado_participacion] || estadoParticipacionConfig.PENDIENTE;
-
-          return (
-            <div
-              key={auditoria.id}
-              className="rounded-lg border bg-card p-6 transition-all hover:shadow-md cursor-pointer"
-              onClick={() => router.push(`/auditorias/${auditoria.id}`)}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 space-y-3">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <Badge variant={config.variant} className="gap-1.5">
-                      <EstadoIcon className="h-3 w-3" />
-                      {config.label}
-                    </Badge>
-                    <Badge variant="outline">{auditoria.rol_en_auditoria}</Badge>
-                    <Badge variant={estadoParticipacion.variant}>{estadoParticipacion.label}</Badge>
-                    {activity && (
-                      <span className="text-sm text-muted-foreground">
-                        Actividad #{activity.activity_number}
-                      </span>
-                    )}
-                  </div>
-
-                  {activity && (
-                    <p className="text-sm text-foreground font-medium">
-                      {activity.activity_description}
-                    </p>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-                    {auditoria.fecha_inicio && (
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        <span>Inicio: {formatDate(auditoria.fecha_inicio)}</span>
-                      </div>
-                    )}
-                    {auditoria.fecha_fin && (
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        <span>Fin: {formatDate(auditoria.fecha_fin)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-              </div>
+      {stageFilter ? (
+        // Show filtered by stage
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h4 className="text-base font-semibold">{estadoConfig[stageFilter]?.label || stageFilter}</h4>
+              <p className="text-sm text-muted-foreground">{filteredAuditorias.length} auditoría{filteredAuditorias.length !== 1 ? 's' : ''}</p>
             </div>
-          );
-        })}
-      </div>
+            <Badge variant="outline">{estadoConfig[stageFilter]?.label || stageFilter}</Badge>
+          </div>
+          <div className="grid gap-4">
+            {filteredAuditorias.map(renderAuditoriaCard)}
+          </div>
+        </div>
+      ) : grouped ? (
+        // Show grouped
+        <div className="space-y-6">
+          {estadoOrder.map((estado) => {
+            const group = groupedAuditorias[estado];
+            if (!group || group.length === 0) return null;
+            const stateLabel = estadoConfig[estado].label;
+
+            return (
+              <section key={estado} className="space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h4 className="text-base font-semibold">{stateLabel}</h4>
+                    <p className="text-sm text-muted-foreground">{group.length} auditoría{group.length !== 1 ? 's' : ''}</p>
+                  </div>
+                  <Badge variant="outline">{stateLabel}</Badge>
+                </div>
+                <div className="grid gap-4">
+                  {group.map(renderAuditoriaCard)}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        // Show flat list
+        <div className="grid gap-4">
+          {filteredAuditorias.map(renderAuditoriaCard)}
+        </div>
+      )}
     </div>
   );
 }

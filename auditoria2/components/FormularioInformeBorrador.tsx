@@ -15,6 +15,12 @@ interface FormularioInformeBorradorProps {
   currentUserId: string;
 }
 
+interface AuditadoUser {
+  id: string;
+  full_name: string | null;
+  email: string;
+}
+
 export function FormularioInformeBorrador({
   auditoriaId,
   informe,
@@ -25,6 +31,8 @@ export function FormularioInformeBorrador({
   const [error, setError] = useState<string | null>(null);
   const [observaciones, setObservaciones] = useState<AuditoriaObservacion[]>([]);
   const [observacionesSeleccionadas, setObservacionesSeleccionadas] = useState<string[]>([]);
+  const [auditados, setAuditados] = useState<AuditadoUser[]>([]);
+  const [destinatarioSeleccionado, setDestinatarioSeleccionado] = useState('');
 
   // Campos del formulario
   const [encabezado, setEncabezado] = useState('');
@@ -44,6 +52,7 @@ export function FormularioInformeBorrador({
 
   useEffect(() => {
     loadObservaciones();
+    loadAuditados();
     if (informe) {
       setEncabezado(informe.encabezado || '');
       setDe(informe.de || '');
@@ -71,6 +80,21 @@ export function FormularioInformeBorrador({
     }
   }, [informe, auditoriaId]);
 
+  useEffect(() => {
+    if (!informe?.para || auditados.length === 0) return;
+
+    const normalizedPara = informe.para.toLowerCase();
+    const matchedIds = auditados
+      .filter((auditado) => {
+        const name = auditado.full_name?.toLowerCase().trim();
+        const email = auditado.email.toLowerCase().trim();
+        return (name && normalizedPara.includes(name)) || normalizedPara.includes(email);
+      })
+      .map((auditado) => auditado.id);
+
+    if (matchedIds.length > 0) setDestinatarioSeleccionado(matchedIds[0]);
+  }, [informe?.para, auditados]);
+
   const loadObservaciones = async () => {
     try {
       const { data, error } = await supabase
@@ -84,6 +108,27 @@ export function FormularioInformeBorrador({
     } catch (err) {
       console.error('Error cargando observaciones:', err);
     }
+  };
+
+  const loadAuditados = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .in('role', ['auditado', 'auditor_interno'])
+        .order('full_name', { ascending: true });
+
+      if (error) throw error;
+      setAuditados(data || []);
+    } catch (err) {
+      console.error('Error cargando auditados:', err);
+    }
+  };
+
+  const handleDestinatarioChange = (selectedId: string) => {
+    setDestinatarioSeleccionado(selectedId);
+    const destinatario = auditados.find((auditado) => auditado.id === selectedId);
+    setPara(destinatario ? (destinatario.full_name?.trim() || destinatario.email) : '');
   };
 
   const handleGuardar = async () => {
@@ -417,17 +462,30 @@ export function FormularioInformeBorrador({
 
             <div>
               <label className="text-sm font-medium mb-2 block">Para *</label>
-              <textarea
-                value={para}
-                onChange={(e) => setPara(e.target.value)}
-                className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Ej:&#10;- Mgs. ____________________ — Presidente del Consejo de Administración&#10;- Abg. ____________________ — Presidente del Consejo de Vigilancia&#10;- Mgs. ____________________ — Gerente"
+              <select
+                value={destinatarioSeleccionado}
+                onChange={(e) => {
+                  handleDestinatarioChange(e.target.value);
+                }}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 required
-                disabled={isSaving}
-              />
+                disabled={isSaving || auditados.length === 0}
+              >
+                <option value="">Seleccionar auditado</option>
+                {auditados.map((auditado) => (
+                  <option key={auditado.id} value={auditado.id}>
+                    {auditado.full_name?.trim() || auditado.email}
+                  </option>
+                ))}
+              </select>
               <p className="text-xs text-muted-foreground mt-1">
-                Lista de destinatarios (uno por línea, con nombre y cargo)
+                Lista desplegable para seleccionar el auditado destinatario.
               </p>
+              {auditados.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  No hay usuarios con rol auditado disponibles.
+                </p>
+              )}
             </div>
           </div>
 

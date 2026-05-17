@@ -37,7 +37,7 @@ export function SelectResponsable({
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Cargar usuarios con rol auditor o auditado
+  // Cargar solo usuarios con rol auditor
   useEffect(() => {
     if (!canEdit) return;
 
@@ -47,7 +47,7 @@ export function SelectResponsable({
         const { data, error } = await supabase
           .from('users')
           .select('id, full_name, email, role')
-          .in('role', ['auditor', 'auditado'])
+          .eq('role', 'auditor')
           .order('full_name', { ascending: true });
 
         if (error) throw error;

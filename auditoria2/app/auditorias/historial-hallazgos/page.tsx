@@ -33,6 +33,15 @@ export default function HistorialHallazgosPage() {
   const [error, setError] = useState<string | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<string>('TODAS');
 
+  const getErrorMessage = (err: unknown) => {
+    if (err instanceof Error) return err.message;
+    if (typeof err === 'object' && err !== null && 'message' in err) {
+      const message = (err as { message?: unknown }).message;
+      if (typeof message === 'string') return message;
+    }
+    return 'Error desconocido';
+  };
+
   useEffect(() => {
     if (user) {
       loadObservaciones();
@@ -97,8 +106,9 @@ export default function HistorialHallazgosPage() {
         setObservaciones([]);
       }
     } catch (err) {
-      console.error('Error cargando observaciones:', err);
-      setError('Error al cargar el historial de hallazgos');
+      const errorMessage = getErrorMessage(err);
+      console.error('Error cargando observaciones:', { errorMessage, err });
+      setError(`Error al cargar el historial de hallazgos: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }

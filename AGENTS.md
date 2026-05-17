@@ -1,8 +1,9 @@
 # AGENTS.md
 
-## Proyecto: Sistema de Auditoría
+## Proyecto
 
-Next.js 15 (App Router) + TypeScript + Supabase + Tailwind. Proyecto principal en `auditoria/auditoria2/`.
+Sistema de auditoría. Next.js 15 (App Router) + TypeScript + Supabase + Tailwind.
+Proyecto en `auditoria/auditoria2/`.
 
 ## Comandos
 
@@ -15,19 +16,20 @@ npm run start  # iniciar producción
 
 ## Arquitectura
 
-- **`app/`** - Next.js App Router (pages, API routes)
-- **`components/`** - React components (includes `ui/` con Radix primitives)
-- **`@/*`** - path alias apunta a raíz del proyecto
-- **API routes en `app/api/`** - notificaciones, exports, webhooks
+- `app/` - Next.js App Router (pages, API routes)
+- `components/` - React components (incluye `ui/` con Radix primitives)
+- `app/api/` - API routes (notificaciones, exports, webhooks)
+- `@/*` - path alias apunta a raíz del proyecto
 
 ## Modelo de datos
 
-Tablas principales en Supabase:
-- `auditorias` - auditorías
-- `observaciones` - hallazgos/observaciones
-- `informes` - informes de auditoría
-- `comunicaciones_auditado` - notificaciones internas
-- `auditoria_participantes` - participantes por rol
+Tablas Supabase: `auditorias`, `observaciones`, `informes`, `comunicaciones_auditado`, `auditoria_participantes`.
+
+## Estados de informe
+
+```
+borrador → revision → socializacion → estrategia → firmas → completado
+```
 
 ## Roles de usuario
 
@@ -35,27 +37,17 @@ Tablas principales en Supabase:
 - **auditado** - recibe notificaciones, completa estrategia, firma
 - **auditor_interno** - revisa y aprueba informes
 
-## Flujo de informes
-
-```
-Borrador → Revisión → Socialización → Estrategia → Firmas → Completado
-```
-
 ## n8n Integration
 
-Workflows en raíz (`*.json`). Webhook URL configurada en `.env` como `NEXT_PUBLIC_N8N_WEBHOOK_URL`. Notificaciones son non-blocking (fallback a DB si webhook falla).
+- Workflows JSON en raíz del proyecto (`n8n_workflow_*.json`)
+- Webhook URL en `.env` como `NEXT_PUBLIC_N8N_WEBHOOK_URL`
+- Notificaciones non-blocking (fallback a DB si webhook falla)
+- Scripts de prueba: `probar_webhook.sh`, `probar_generar_word.sh`
 
 ## Supabase Auth
 
-Usa `@supabase/auth-helpers-nextjs`. Auth callbacks en `app/auth/callback/route.ts`.
-
-## Notas de código
-
-- `lib/utils.ts` - utilidades compartidas (clsx, date-fns)
-- `components/EstrategiaForm.tsx` - notifica por cada observación
-- `components/FormularioInformeBorrador.tsx` - notifica al auditor interno al enviar a revisión
-- `components/MatrizObservaciones.tsx` - matriz 30 campos + export Excel
+Usa `@supabase/auth-helpers-nextjs`. Callbacks en `app/auth/callback/route.ts`.
 
 ## Idioma
 
-Este es un proyecto en español. Mantener español en código, comentarios y documentación.
+Español en código, comentarios y documentación.

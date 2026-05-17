@@ -29,6 +29,15 @@ export function FirmasInforme({
   const [isLoading, setIsLoading] = useState(true);
   const [isFirmando, setIsFirmando] = useState(false);
 
+  const getErrorMessage = (err: unknown) => {
+    if (err instanceof Error) return err.message;
+    if (typeof err === 'object' && err !== null && 'message' in err) {
+      const message = (err as { message?: unknown }).message;
+      if (typeof message === 'string') return message;
+    }
+    return 'Error desconocido';
+  };
+
   useEffect(() => {
     loadFirmas();
   }, [informe.id]);
@@ -45,7 +54,8 @@ export function FirmasInforme({
       if (error) throw error;
       setFirmas(data || []);
     } catch (err) {
-      console.error('Error cargando firmas:', err);
+      const errorMessage = getErrorMessage(err);
+      console.warn('Error cargando firmas:', { errorMessage, err });
     } finally {
       setIsLoading(false);
     }
@@ -98,8 +108,9 @@ export function FirmasInforme({
       onSuccess();
       alert('✅ Informe firmado exitosamente');
     } catch (err) {
-      console.error('Error firmando:', err);
-      alert('Error al firmar el informe');
+      const errorMessage = getErrorMessage(err);
+      console.warn('Error firmando:', { errorMessage, err });
+      alert(`Error al firmar el informe: ${errorMessage}`);
     } finally {
       setIsFirmando(false);
     }
@@ -117,19 +128,25 @@ export function FirmasInforme({
 
     if (firmasCompletas.length >= totalFirmantes) {
       // Todos han firmado, cambiar estado a COMPLETADO
-      await supabase
+      const { error: informeError } = await supabase
         .from('auditoria_informe')
         .update({ estado: 'COMPLETADO' })
         .eq('id', informe.id);
+      if (informeError) {
+        console.warn('No se pudo actualizar estado del informe desde cliente:', informeError.message);
+      }
 
       // Cerrar auditoría
-      await supabase
+      const { error: auditoriaError } = await supabase
         .from('auditorias')
         .update({
           estado: 'CERRADA',
           fecha_cierre: new Date().toISOString(),
         })
         .eq('id', informe.auditoria_id);
+      if (auditoriaError) {
+        console.warn('No se pudo cerrar auditoría desde cliente:', auditoriaError.message);
+      }
     }
   };
 
@@ -144,6 +161,10 @@ export function FirmasInforme({
   const puedeFirmar = !readOnly && 
     informe.estado === 'ENVIADO_A_AUDITADOS' &&
     !firmas.find(f => f.firmante_id === currentUserId && f.firmado);
+  const esAuditadoActual = participantes.some((p) => p.user_id === currentUserId);
+  const esAuditorActual = !esAuditadoActual;
+  const firmaAuditor = firmas.find(f => f.rol_firmante === 'AUDITOR' && f.firmado);
+  const puedeFirmarComoAuditor = puedeFirmar && esAuditorActual && !firmaAuditor;
 
   return (
     <div className="space-y-6">
@@ -172,16 +193,36 @@ export function FirmasInforme({
                   </p>
                 </div>
               </div>
-              {firmas.find(f => f.rol_firmante === 'AUDITOR' && f.firmado) ? (
+              {firmaAuditor ? (
                 <Badge variant="default">Firmado</Badge>
               ) : (
                 <Badge variant="outline">Pendiente</Badge>
               )}
             </div>
-            {firmas.find(f => f.rol_firmante === 'AUDITOR' && f.firmado)?.fecha_firma && (
+            {firmaAuditor?.fecha_firma && (
               <p className="text-xs text-muted-foreground mt-2">
-                Fecha: {new Date(firmas.find(f => f.rol_firmante === 'AUDITOR' && f.firmado)!.fecha_firma!).toLocaleDateString('es-ES')}
+                Fecha: {new Date(firmaAuditor.fecha_firma).toLocaleDateString('es-ES')}
               </p>
+            )}
+            {puedeFirmarComoAuditor && (
+              <Button
+                size="sm"
+                onClick={handleFirmar}
+                disabled={isFirmando}
+                className="mt-3 gap-2"
+              >
+                {isFirmando ? (
+                  <>
+                    <Loader variant="cube" size={14} />
+                    Firmando...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="h-4 w-4" />
+                    Firmar Informe
+                  </>
+                )}
+              </Button>
             )}
           </div>
 

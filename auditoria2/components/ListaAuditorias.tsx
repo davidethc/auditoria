@@ -19,7 +19,7 @@ import {
   Play,
   FileCheck
 } from 'lucide-react';
-import type { Auditoria } from '@/types/auditorias';
+import type { Auditoria, AuditoriaEstado } from '@/types/auditorias';
 import type { LucideIcon } from 'lucide-react';
 
 interface ListaAuditoriasProps {
@@ -27,6 +27,8 @@ interface ListaAuditoriasProps {
   mode?: 'todas' | 'creadas' | 'asignadas';
   selectedAuditoriaId?: string | null;
   onSelectAuditoria?: (auditoria: Auditoria) => void;
+  grouped?: boolean;
+  stageFilter?: AuditoriaEstado | null;
 }
 
 const estadoConfig: Record<string, { label: string; variant: 'default' | 'destructive' | 'secondary' | 'outline'; icon: LucideIcon }> = {
@@ -37,11 +39,16 @@ const estadoConfig: Record<string, { label: string; variant: 'default' | 'destru
   CERRADA: { label: 'Cerrada', variant: 'secondary', icon: CheckCircle2 },
 };
 
+const estadoOrder: AuditoriaEstado[] = ['PLANIFICADA', 'EN_PREPARACION', 'EN_EJECUCION', 'EN_REPORTE', 'CERRADA'];
+
+
 export function ListaAuditorias({
   userId,
   mode = 'todas',
   selectedAuditoriaId,
   onSelectAuditoria,
+  grouped = true,
+  stageFilter = null,
 }: ListaAuditoriasProps) {
   const router = useRouter();
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
@@ -173,8 +180,97 @@ export function ListaAuditorias({
     router.push(`/auditorias/${auditoria.id}`);
   };
 
+  const renderAuditoriaCard = (auditoria: Auditoria, selectedAuditoriaId: string | null | undefined, onSelectAuditoria: ((auditoria: Auditoria) => void) | undefined, handleOpen: (auditoria: Auditoria) => void, handleNavigate: (e: React.MouseEvent, auditoria: Auditoria) => void) => {
+    const config = estadoConfig[auditoria.estado] || estadoConfig.PLANIFICADA;
+    const EstadoIcon = config.icon;
+    const activity = auditoria.activity as {
+      id: string;
+      activity_number: number;
+      activity_description: string;
+      start_date: string | null;
+      end_date: string | null;
+      priority: string | null;
+    } | undefined;
+
+    return (
+      <div
+        key={auditoria.id}
+        className={cn(
+          "rounded-lg border bg-card p-6 transition-all hover:shadow-md cursor-pointer",
+          selectedAuditoriaId === auditoria.id && "border-primary/50 ring-1 ring-primary/15 bg-primary/5"
+        )}
+        onClick={() => handleOpen(auditoria)}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 space-y-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Badge variant={config.variant} className="gap-1.5">
+                <EstadoIcon className="h-3 w-3" />
+                {config.label}
+              </Badge>
+              {activity && (
+                <span className="text-sm text-muted-foreground">
+                  Actividad #{activity.activity_number}
+                </span>
+              )}
+            </div>
+
+            {activity && (
+              <p className="text-sm text-foreground font-medium">
+                {activity.activity_description}
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+              {auditoria.fecha_inicio && (
+                <div className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  <span>Inicio: {formatDate(auditoria.fecha_inicio)}</span>
+                </div>
+              )}
+              {auditoria.fecha_fin && (
+                <div className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  <span>Fin: {formatDate(auditoria.fecha_fin)}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1">
+                <span>Creada: {format(new Date(auditoria.creada_at), 'dd/MM/yyyy', { locale: es })}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {onSelectAuditoria ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={(e) => handleNavigate(e, auditoria)}
+              >
+                Abrir
+              </Button>
+            ) : null}
+            <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const groupedAuditorias = estadoOrder.reduce((acc, estado) => {
+    acc[estado] = auditorias.filter((auditoria) => auditoria.estado === estado);
+    return acc;
+  }, {} as Record<AuditoriaEstado, Auditoria[]>);
+
+  // Filter by stage if specified
+  const filteredAuditorias = stageFilter ? auditorias.filter(a => a.estado === stageFilter) : auditorias;
+
+  const hasGroupedAuditorias = grouped && Object.values(groupedAuditorias).some((group) => group.length > 0);
+  const hasFilteredAuditorias = filteredAuditorias.length > 0;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">
           {mode === 'creadas' ? 'Mis Auditorías' : mode === 'asignadas' ? 'Auditorías Asignadas' : 'Auditorías'}
@@ -182,85 +278,51 @@ export function ListaAuditorias({
         <Badge variant="secondary">{auditorias.length} auditoría{auditorias.length !== 1 ? 's' : ''}</Badge>
       </div>
 
-      <div className="grid gap-4">
-        {auditorias.map((auditoria) => {
-          const config = estadoConfig[auditoria.estado] || estadoConfig.PLANIFICADA;
-          const EstadoIcon = config.icon;
-          const activity = auditoria.activity as {
-            id: string;
-            activity_number: number;
-            activity_description: string;
-            start_date: string | null;
-            end_date: string | null;
-            priority: string | null;
-          } | undefined;
-
-          return (
-            <div
-              key={auditoria.id}
-              className={cn(
-                "rounded-lg border bg-card p-6 transition-all hover:shadow-md cursor-pointer",
-                selectedAuditoriaId === auditoria.id && "border-primary/50 ring-1 ring-primary/15 bg-primary/5"
-              )}
-              onClick={() => handleOpen(auditoria)}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Badge variant={config.variant} className="gap-1.5">
-                      <EstadoIcon className="h-3 w-3" />
-                      {config.label}
-                    </Badge>
-                    {activity && (
-                      <span className="text-sm text-muted-foreground">
-                        Actividad #{activity.activity_number}
-                      </span>
-                    )}
-                  </div>
-
-                  {activity && (
-                    <p className="text-sm text-foreground font-medium">
-                      {activity.activity_description}
-                    </p>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-                    {auditoria.fecha_inicio && (
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        <span>Inicio: {formatDate(auditoria.fecha_inicio)}</span>
-                      </div>
-                    )}
-                    {auditoria.fecha_fin && (
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        <span>Fin: {formatDate(auditoria.fecha_fin)}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-1">
-                      <span>Creada: {format(new Date(auditoria.creada_at), 'dd/MM/yyyy', { locale: es })}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {onSelectAuditoria ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-2"
-                      onClick={(e) => handleNavigate(e, auditoria)}
-                    >
-                      Abrir
-                    </Button>
-                  ) : null}
-                  <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                </div>
-              </div>
+      {stageFilter ? (
+        // Show filtered by stage
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h4 className="text-base font-semibold">{estadoConfig[stageFilter]?.label || stageFilter}</h4>
+              <p className="text-sm text-muted-foreground">{filteredAuditorias.length} auditoría{filteredAuditorias.length !== 1 ? 's' : ''}</p>
             </div>
-          );
-        })}
-      </div>
+            <Badge variant="outline">{estadoConfig[stageFilter]?.label || stageFilter}</Badge>
+          </div>
+          <div className="grid gap-4">
+            {filteredAuditorias.map((auditoria) => renderAuditoriaCard(auditoria, selectedAuditoriaId, onSelectAuditoria, handleOpen, handleNavigate))}
+          </div>
+        </div>
+      ) : grouped && hasGroupedAuditorias ? (
+        // Show grouped
+        <div className="space-y-6">
+          {estadoOrder.map((estado) => {
+            const group = groupedAuditorias[estado];
+            if (!group || group.length === 0) return null;
+            const estadoLabel = estadoConfig[estado]?.label || estado;
+
+            return (
+              <section key={estado} className="space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h4 className="text-base font-semibold">{estadoLabel}</h4>
+                    <p className="text-sm text-muted-foreground">{group.length} auditoría{group.length !== 1 ? 's' : ''}</p>
+                  </div>
+                  <Badge variant="outline">{estadoLabel}</Badge>
+                </div>
+
+                <div className="grid gap-4">
+                  {group.map((auditoria) => renderAuditoriaCard(auditoria, selectedAuditoriaId, onSelectAuditoria, handleOpen, handleNavigate))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        // Show flat list
+        <div className="grid gap-4">
+          {filteredAuditorias.map((auditoria) => renderAuditoriaCard(auditoria, selectedAuditoriaId, onSelectAuditoria, handleOpen, handleNavigate))}
+        </div>
+      )}
     </div>
   );
 }
